@@ -1,0 +1,677 @@
+import { describe, expect, it } from "vitest";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Context } from "@deepseek-ai/cordis";
+
+import {
+  buildProjectMarkdown,
+  parseFrontmatter,
+  projectFrontmatter,
+} from "../src/frontmatter.ts";
+import {
+  createCustomerFolder,
+  createProjectFolder,
+  folderDateAndTitle,
+  folderNameForTitle,
+  formatDay,
+  matchesFilter,
+  matchesQuery,
+  renameCustomerFolder,
+  scanWorkspace,
+} from "../src/catalog.ts";
+import {
+  WorkbenchService,
+  daysUntil,
+  parseDay,
+} from "../src/service.ts";
+import {
+  categorizeFiles,
+  categoryOfFile,
+  scanProjectFiles,
+} from "../src/files.ts";
+import { listProjectsRequestSchema } from "../src/schemas.ts";
+import type { ProjectFile } from "../src/types.ts";
+import {
+  chipLabel,
+  formatProjectRef,
+} from "../src/client/projectTriggers.ts";
+import {
+  decodeOverlay,
+  emptyOverlay,
+  loadOverlay,
+  pushRecentWorkspace,
+  saveOverlay,
+  withOverlayLock,
+} from "../src/overlay.ts";
+
+describe("frontmatter", () => {
+  it("解析基础标量、数组与注释", () => {
+    const raw = [
+      "---",
+      "title: 官网改版",
+      "product_line: 数据中台",
+      "stage: planning",
+      "owner: 张三",
+      "tags: [官网, 前端]",
+      "# 注释行",
+      "---",
+      "",
+      "# 正文",
+    ].join("\n");
+    const { data, body } = parseFrontmatter(raw);
+    expect(data.title).toBe("官网改版");
+    expect(data.product_line).toBe("数据中台");
+    expect(data.stage).toBe("planning");
+    expect(data.tags).toEqual(["官网", "前端"]);
+    expect(body).toContain("# 正文");
+  });
+
+  it("没有 frontmatter 时原样返回 body", () => {
+    const { data, body } = parseFrontmatter("# 只有正文\n");
+    expect(data).toEqual({});
+    expect(body).toContain("只有正文");
+  });
+
+  it("projectFrontmatter 只保留合法字段", () => {
+    const frontmatter = projectFrontmatter(
+      "---\ntitle: A\nstage: unknown\nowner: 李四\ntags: [x]\n---\n",
+    );
+    expect(frontmatter.title).toBe("A");
+    expect(frontmatter.stage).toBeUndefined();
+    expect(frontmatter.owner).toBe("李四");
+    expect(frontmatter.tags).toEqual(["x"]);
+  });
+
+  it("buildProjectMarkdown 与解析往返一致", () => {
+    const text = buildProjectMarkdown(
+      {
+        title: "Demo",
+        productLine: "P",
+        stage: "execution",
+        owner: "王五",
+        tags: ["a", "b"],
+      },
+      "# 项目\n",
+    );
+    expect(projectFrontmatter(text)).toMatchObject({
+      title: "Demo",
+      productLine: "P",
+      stage: "execution",
+      owner: "王五",
+      tags: ["a", "b"],
+    });
+  });
+});
+
+describe("catalog 目录约定", () => {
+  it("folderNameForTitle 生成日期前缀并清理非法字符", () => {
+    const now = new Date("2026-08-20T10:00:00+08:00");
+    expect(folderNameForTitle("  官网-改版  ", now)).toBe("2026-08-20_官网 改版");
+    expect(folderNameForTitle("a/b:c", now)).toBe("2026-08-20_abc");
+    expect(() => folderNameForTitle("   ", now)).toThrow("empty title");
+  });
+
+  it("folderDateAndTitle 解析日期前缀", () => {
+    expect(folderDateAndTitle("2026-08-20_官网改版")).toEqual({
+      date: "2026-08-20",
+      title: "官网改版",
+    });
+    expect(folderDateAndTitle("旧目录")).toEqual({ title: "旧目录" });
+  });
+
+  it("scanWorkspace 扫描客户与项目两层结构", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-scan-"));
+    const customerPath = join(root, "中科云");
+    await mkdir(join(customerPath, "2026-08-01_数据平台"), { recursive: true });
+    await writeFile(
+      join(customerPath, "2026-08-01_数据平台", "project.md"),
+      "---\ntitle: 数据平台一期\nproduct_line: 数据中台\nstage: execution\nowner: 张三\ntags: [ETL, 建模]\n---\n\n# 目标\n",
+    );
+    await mkdir(join(customerPath, "2026-08-10_官网改版"), { recursive: true });
+
+    const { customers, projects } = await scanWorkspace(root, emptyOverlay());
+    expect(customers).toHaveLength(1);
+    expect(customers[0]!.name).toBe("中科云");
+    expect(projects).toHaveLength(2);
+
+    const dataProject = projects.find((p) => p.title === "数据平台一期")!;
+    expect(dataProject.productLine).toBe("数据中台");
+    expect(dataProject.stage).toBe("execution");
+    expect(dataProject.owner).toBe("张三");
+    expect(dataProject.tags).toEqual(["ETL", "建模"]);
+    expect(dataProject.hasProjectDoc).toBe(true);
+
+    const websiteProject = projects.find((p) => p.title === "官网改版")!;
+    expect(websiteProject.stage).toBe("opportunity");
+    expect(websiteProject.hasProjectDoc).toBe(false);
+  });
+
+  it("createProjectFolder 自动排重并生成 project.md", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-create-"));
+    const customerPath = join(root, "中科云");
+    await mkdir(customerPath);
+    const first = await createProjectFolder(customerPath, "官网改版", { tags: [] });
+    const second = await createProjectFolder(customerPath, "官网改版", { tags: [] });
+    const prefix = formatDay(new Date());
+    expect(first.id).toBe(`${prefix}_官网改版`);
+    expect(second.id).toBe(`${prefix}_官网改版-2`);
+    expect(first.folderPath).not.toBe(second.folderPath);
+
+    const { customers, projects } = await scanWorkspace(root, emptyOverlay());
+    const customer = customers.find((item) => item.folderPath === customerPath);
+    expect(customer?.projects).toHaveLength(2);
+    expect(projects.map((p) => p.title).sort()).toEqual(["官网改版", "官网改版"]);
+    const created = projects.find((p) => p.id === first.id)!;
+    expect(created.hasProjectDoc).toBe(true);
+    expect(created.customerName).toBe("中科云");
+  });
+
+  it("matchesFilter / matchesQuery 按项目阶段过滤", () => {
+    const base = {
+      id: "2026-08-20_x",
+      folderPath: "/x",
+      title: "官网改版",
+      createdMs: 1,
+      stage: "execution" as const,
+      tags: ["官网"],
+      hasProjectDoc: true,
+      customerId: "c",
+      customerName: "中科云",
+      archived: false,
+    };
+    expect(matchesFilter(base, "all")).toBe(true);
+    expect(matchesFilter(base, "execution")).toBe(true);
+    expect(matchesFilter(base, "planning")).toBe(false);
+    expect(matchesFilter({ ...base, stage: "acceptance" }, "acceptance")).toBe(true);
+    expect(matchesFilter({ ...base, stage: "acceptance" }, "retrospective")).toBe(false);
+    expect(matchesQuery(base, "官网")).toBe(true);
+    expect(matchesQuery(base, "中科云")).toBe(true);
+    expect(matchesQuery({ ...base, productLine: "数据中台" }, "数据中台")).toBe(true);
+    expect(matchesQuery(base, "不存在")).toBe(false);
+  });
+
+  it("matchesFilter 归档项目仍按阶段过滤，在全部列表可见", () => {
+    const base = {
+      id: "2026-08-20_x",
+      folderPath: "/x",
+      title: "官网改版",
+      createdMs: 1,
+      stage: "execution" as const,
+      tags: [] as string[],
+      hasProjectDoc: true,
+      customerId: "c",
+      customerName: "中科云",
+      archived: true,
+    };
+    expect(matchesFilter(base, "all")).toBe(true);
+    expect(matchesFilter(base, "execution")).toBe(true);
+    expect(matchesFilter(base, "planning")).toBe(false);
+    expect(matchesFilter({ ...base, archived: false }, "execution")).toBe(true);
+  });
+
+  describe("listProjects 过滤值边界校验兼容", () => {
+    it("新版阶段值与 all 通过校验", () => {
+      for (const filter of ["all", "opportunity", "requirement", "planning", "execution", "acceptance", "retrospective"]) {
+        const parsed = listProjectsRequestSchema.safeParse({ query: "", filter });
+        expect(parsed.success, `filter=${filter} should pass boundary validation`).toBe(true);
+      }
+    });
+
+    it("legacy 过滤值（active/done/archived）不触发边界校验失败", () => {
+      for (const filter of ["active", "done", "archived"]) {
+        const parsed = listProjectsRequestSchema.safeParse({ query: "", filter });
+        expect(parsed.success, `filter=${filter} should not fail boundary validation`).toBe(true);
+      }
+    });
+  });
+
+  it("scanWorkspace 读取 overlay 的 archived 标记", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-arch-"));
+    const customerPath = join(root, "中科云");
+    await mkdir(join(customerPath, "2026-08-01_数据平台"), { recursive: true });
+    await writeFile(
+      join(customerPath, "2026-08-01_数据平台", "project.md"),
+      "---\ntitle: 数据平台一期\n---\n",
+    );
+    const overlay = emptyOverlay();
+    overlay.projects["2026-08-01_数据平台"] = { archived: true };
+    const { projects } = await scanWorkspace(root, overlay);
+    expect(projects).toHaveLength(1);
+    expect(projects[0]!.archived).toBe(true);
+  });
+});
+
+describe("catalog 客户管理", () => {
+  it("createCustomerFolder 新建客户文件夹并自动排重", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-customer-"));
+    const first = await createCustomerFolder(root, "中科云");
+    const second = await createCustomerFolder(root, "中科云");
+    expect(first.id).toBe("中科云");
+    expect(second.id).toBe("中科云-2");
+    const { customers } = await scanWorkspace(root, emptyOverlay());
+    expect(customers.map((c) => c.name).sort()).toEqual(["中科云", "中科云-2"]);
+  });
+
+  it("createCustomerFolder 清理非法字符并拒绝空名", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-customer-"));
+    const created = await createCustomerFolder(root, "  A/B:C  ");
+    expect(created.id).toBe("ABC");
+    await expect(createCustomerFolder(root, "   ")).rejects.toThrow("empty customer name");
+  });
+
+  it("renameCustomerFolder 整体改名并迁移内部项目", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-rename-"));
+    await createCustomerFolder(root, "中科云");
+    await createProjectFolder(join(root, "中科云"), "数据平台", { tags: [] });
+    const renamed = await renameCustomerFolder(root, "中科云", "中科云科技");
+    expect(renamed.id).toBe("中科云科技");
+    const { customers, projects } = await scanWorkspace(root, emptyOverlay());
+    expect(customers).toHaveLength(1);
+    expect(customers[0]!.name).toBe("中科云科技");
+    expect(projects).toHaveLength(1);
+    expect(projects[0]!.customerName).toBe("中科云科技");
+  });
+
+  it("renameCustomerFolder 目标重名时抛错", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-rename-"));
+    await createCustomerFolder(root, "甲");
+    await createCustomerFolder(root, "乙");
+    await expect(renameCustomerFolder(root, "甲", "乙")).rejects.toThrow(/already exists/);
+  });
+
+  it("scanWorkspace 包含空客户目录", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-empty-"));
+    await createCustomerFolder(root, "新客户");
+    const { customers, projects } = await scanWorkspace(root, emptyOverlay());
+    expect(customers).toHaveLength(1);
+    expect(customers[0]!.name).toBe("新客户");
+    expect(customers[0]!.projects).toHaveLength(0);
+    expect(projects).toHaveLength(0);
+  });
+});
+
+describe("overlay", () => {
+  it("decodeOverlay 兼容缺省与非法字段", () => {
+    const store = decodeOverlay({
+      schemaVersion: 1,
+      members: [{ uid: "u1", name: "张三" }, { uid: "", name: "" }],
+      recentWorkspaces: ["/a", "/b", "", 42],
+      projects: {
+        ok: { title: "T", stage: "execution" },
+        archived: { archived: true },
+        unarchived: { archived: false },
+        badStage: { stage: "nope" },
+        empty: {},
+      },
+    });
+    expect(store.members).toEqual([{ uid: "u1", name: "张三" }]);
+    expect(store.recentWorkspaces).toEqual(["/a", "/b"]);
+    expect(store.projects.ok).toEqual({ title: "T", stage: "execution" });
+    expect(store.projects.archived).toEqual({ archived: true });
+    expect(store.projects.unarchived).toEqual({ archived: false });
+    expect(store.projects.badStage).toBeUndefined();
+    expect(store.projects.empty).toBeUndefined();
+  });
+
+  it("pushRecentWorkspace 按 MRU 去重并截断", () => {
+    const items = ["/a", "/b", "/c"];
+    expect(pushRecentWorkspace(items, "/d")).toEqual(["/d", "/a", "/b", "/c"]);
+    expect(pushRecentWorkspace(items, "/b")).toEqual(["/b", "/a", "/c"]);
+    const many = ["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8"];
+    expect(pushRecentWorkspace(many, "/9")).toHaveLength(8);
+    expect(pushRecentWorkspace(many, "/9")[0]).toBe("/9");
+  });
+
+  it("recentWorkspaces 可原子往返", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
+    const store = emptyOverlay();
+    store.recentWorkspaces = ["/a", "/b"];
+    await saveOverlay(dir, store);
+    expect((await loadOverlay(dir)).recentWorkspaces).toEqual(["/a", "/b"]);
+  });
+
+  it("loadOverlay 文件缺失时返回空 overlay", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
+    expect(await loadOverlay(dir)).toEqual(emptyOverlay());
+  });
+
+  it("saveOverlay 原子写入后可重新读取", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
+    const store = emptyOverlay();
+    store.workspaceRoot = "/workspace";
+    store.projects["2026-08-20_demo"] = { stage: "execution" };
+    await saveOverlay(dir, store);
+    expect(await loadOverlay(dir)).toEqual(store);
+  });
+
+  it("withOverlayLock 串行化并发写", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
+    const first = withOverlayLock(dir, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return "first";
+    });
+    const second = withOverlayLock(dir, async () => "second");
+    expect(await first).toBe("first");
+    expect(await second).toBe("second");
+  });
+});
+
+describe("到期计算", () => {
+  it("parseDay 解析 YYYY-MM-DD 并拒绝非法输入", () => {
+    expect(parseDay("2026-08-20")).toEqual(new Date(2026, 7, 20));
+    expect(parseDay("2026-13-01")).toBeUndefined();
+    expect(parseDay("2026-02-30")).toBeUndefined();
+    expect(parseDay("not-a-date")).toBeUndefined();
+    expect(parseDay("20260820")).toBeUndefined();
+  });
+
+  it("daysUntil 按整天计算差值", () => {
+    const today = new Date(2026, 7, 20);
+    expect(daysUntil("2026-08-20", today)).toBe(0);
+    expect(daysUntil("2026-08-18", today)).toBe(-2);
+    expect(daysUntil("2026-08-25", today)).toBe(5);
+    expect(daysUntil("bad", today)).toBeUndefined();
+  });
+});
+
+describe("AI 增强（统计/到期/批量）", () => {
+  /** 今天加 offset 天的 YYYY-MM-DD。 */
+  function dayOffset(offset: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return formatDay(date);
+  }
+
+  async function makeFixture() {
+    const root = await mkdtemp(join(tmpdir(), "wb-svc-"));
+    const wsRoot = join(root, "ws");
+    const dataDir = join(root, "data");
+    await mkdir(wsRoot, { recursive: true });
+    const ctx = new Context();
+    const service = new WorkbenchService(ctx, { workspaceRoot: wsRoot, dataDir });
+    return { ctx, service, wsRoot };
+  }
+
+  async function seedWorkspace(wsRoot: string) {
+    const customer = join(wsRoot, "中科云");
+    await mkdir(join(customer, "2026-07-01_数据平台"), { recursive: true });
+    await writeFile(
+      join(customer, "2026-07-01_数据平台", "project.md"),
+      `---\ntitle: 数据平台一期\ndue_at: ${dayOffset(-19)}\nstage: execution\nowner: 张三\nproduct_line: 数据中台\n---\n`,
+    );
+    await mkdir(join(customer, "2026-08-10_官网改版"), { recursive: true });
+    await writeFile(
+      join(customer, "2026-08-10_官网改版", "project.md"),
+      `---\ntitle: 官网改版\ndue_at: ${dayOffset(2)}\nstage: planning\n---\n`,
+    );
+    const customer2 = join(wsRoot, "海康智造");
+    await mkdir(join(customer2, "2026-08-01_产线数字化"), { recursive: true });
+    await writeFile(
+      join(customer2, "2026-08-01_产线数字化", "project.md"),
+      `---\ntitle: 产线数字化\nstage: acceptance\n---\n`,
+    );
+  }
+
+  it("statistics 统计含归档、分布与到期概览", async () => {
+    const { ctx, service, wsRoot } = await makeFixture();
+    try {
+      await seedWorkspace(wsRoot);
+      const overlay = emptyOverlay();
+      overlay.projects["2026-08-10_官网改版"] = { archived: true };
+      await saveOverlay(service.dataDir, overlay);
+
+      const stats = await service.statistics({}, new AbortController().signal);
+      expect(stats.workspaceRoot).toBe(wsRoot);
+      expect(stats.totalProjects).toBe(3);
+      expect(stats.activeProjects).toBe(2);
+      expect(stats.archivedProjects).toBe(1);
+      expect(stats.doneProjects).toBe(1);
+      expect(stats.customers).toBe(2);
+      expect(stats.byStage.execution).toBe(1);
+      expect(stats.byStage.planning).toBe(1);
+      expect(stats.byStage.acceptance).toBe(1);
+      expect(stats.byOwner).toEqual([{ owner: "张三", count: 1 }]);
+      expect(stats.byProductLine).toEqual([{ productLine: "数据中台", count: 1 }]);
+      // 官网改版已归档，不应计入 dueSoon
+      expect(stats.overdueProjects).toBe(1);
+      expect(stats.dueSoonProjects).toBe(0);
+    } finally {
+      service.stopWatch();
+    }
+  });
+
+  it("dueReminders 区分逾期与即将到期", async () => {
+    const { ctx, service, wsRoot } = await makeFixture();
+    try {
+      await seedWorkspace(wsRoot);
+      const signal = new AbortController().signal;
+      const result = await service.dueReminders({}, signal);
+      expect(result.overdue).toHaveLength(1);
+      expect(result.overdue[0]!.id).toBe("2026-07-01_数据平台");
+      expect(result.overdue[0]!.daysLeft).toBeLessThan(0);
+      expect(result.overdue[0]!.owner).toBe("张三");
+      expect(result.dueSoon).toHaveLength(1);
+      expect(result.dueSoon[0]!.id).toBe("2026-08-10_官网改版");
+      // acceptance 项目不在提醒里
+      const onlyOverdue = await service.dueReminders({ days: 0 }, signal);
+      expect(onlyOverdue.overdue).toHaveLength(1);
+      expect(onlyOverdue.dueSoon).toHaveLength(0);
+      // 按客户过滤
+      const filtered = await service.dueReminders({ customer: "海康" }, signal);
+      expect(filtered.overdue).toHaveLength(0);
+      expect(filtered.dueSoon).toHaveLength(0);
+    } finally {
+      service.stopWatch();
+    }
+  });
+
+  it("listProjects 兼容 legacy 过滤值（按 all 处理）", async () => {
+    const { ctx, service, wsRoot } = await makeFixture();
+    try {
+      await seedWorkspace(wsRoot);
+      const signal = new AbortController().signal;
+      const all = await service.listProjects({ query: "", filter: "all" }, signal);
+      for (const legacy of ["active", "done", "archived"] as const) {
+        const result = await service.listProjects({ query: "", filter: legacy }, signal);
+        expect(result.projects.map((p) => p.id)).toEqual(all.projects.map((p) => p.id));
+        expect(result.customers.length).toBe(all.customers.length);
+      }
+    } finally {
+      service.stopWatch();
+    }
+  });
+
+  it("batchUpdate 批量设置阶段并移动客户", async () => {
+    const { ctx, service, wsRoot } = await makeFixture();
+    try {
+      await seedWorkspace(wsRoot);
+      await createCustomerFolder(wsRoot, "新客户");
+      const signal = new AbortController().signal;
+      const result = await service.batchUpdate(
+        { ids: ["2026-07-01_数据平台", "2026-08-10_官网改版"], stage: "execution", customerId: "新客户" },
+        signal,
+      );
+      expect(result.updated).toBe(2);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toEqual([]);
+
+      const { projects } = await service.listProjects({ query: "", filter: "all" }, signal);
+      const moved = projects.find((p) => p.id === "2026-07-01_数据平台")!;
+      expect(moved.customerName).toBe("新客户");
+      expect(moved.stage).toBe("execution");
+    } finally {
+      service.stopWatch();
+    }
+  });
+
+  it("batchUpdate 未知 ID 计入失败", async () => {
+    const { ctx, service, wsRoot } = await makeFixture();
+    try {
+      await seedWorkspace(wsRoot);
+      const result = await service.batchUpdate(
+        { ids: ["2026-07-01_数据平台", "不存在的项目"], owner: "李四" },
+        new AbortController().signal,
+      );
+      expect(result.updated).toBe(1);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]!.id).toBe("不存在的项目");
+      const { projects } = await service.listProjects({ query: "", filter: "all" }, new AbortController().signal);
+      expect(projects.find((p) => p.id === "2026-07-01_数据平台")!.owner).toBe("李四");
+    } finally {
+      service.stopWatch();
+    }
+  });
+});
+
+describe("文件归集", () => {
+  it("categoryOfFile 按扩展名归类办公文档", () => {
+    expect(categoryOfFile("方案.docx")).toBe("word");
+    expect(categoryOfFile("预算.xlsx")).toBe("excel");
+    expect(categoryOfFile("汇报.pptx")).toBe("ppt");
+    expect(categoryOfFile("合同.pdf")).toBe("pdf");
+    expect(categoryOfFile("README.md")).toBe("text");
+    expect(categoryOfFile("photo.png")).toBe("image");
+    expect(categoryOfFile("archive.zip")).toBe("archive");
+    expect(categoryOfFile("无扩展名")).toBe("other");
+    expect(categoryOfFile("data.unknown")).toBe("other");
+  });
+
+  it("categoryOfFile 大小写不敏感", () => {
+    expect(categoryOfFile("CONTRACT.DOCX")).toBe("word");
+    expect(categoryOfFile("DATA.XLS")).toBe("excel");
+  });
+
+  it("scanProjectFiles 递归扫描并跳过隐藏/依赖目录", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-files-"));
+    const project = join(root, "2026-08-20_官网改版");
+    await mkdir(join(project, "docs", "sub"), { recursive: true });
+    await writeFile(join(project, "project.md"), "# 项目\n");
+    await writeFile(join(project, "docs", "方案.docx"), "x");
+    await writeFile(join(project, "docs", "sub", "预算.xlsx"), "y");
+    await mkdir(join(project, "node_modules", "pkg"), { recursive: true });
+    await writeFile(join(project, "node_modules", "pkg", "index.js"), "z");
+    await mkdir(join(project, ".git"), { recursive: true });
+    await writeFile(join(project, ".git", "config"), "c");
+
+    const files = await scanProjectFiles(project);
+    const paths = files.map((f) => f.relativePath).sort();
+    expect(paths).toEqual(["docs/sub/预算.xlsx", "docs/方案.docx", "project.md"]);
+    const docx = files.find((f) => f.relativePath === "docs/方案.docx")!;
+    expect(docx.category).toBe("word");
+    expect(docx.sizeBytes).toBe(1);
+    expect(docx.modifiedMs).toBeGreaterThan(0);
+  });
+
+  it("categorizeFiles 统计各类别数量", () => {
+    const files: ProjectFile[] = [
+      { name: "a.docx", relativePath: "a.docx", category: "word", sizeBytes: 1, modifiedMs: 1 },
+      { name: "b.xlsx", relativePath: "b.xlsx", category: "excel", sizeBytes: 1, modifiedMs: 1 },
+      { name: "c.docx", relativePath: "c.docx", category: "word", sizeBytes: 1, modifiedMs: 1 },
+      { name: "d.txt", relativePath: "d.txt", category: "text", sizeBytes: 1, modifiedMs: 1 },
+    ];
+    const counts = categorizeFiles(files);
+    expect(counts.word).toBe(2);
+    expect(counts.excel).toBe(1);
+    expect(counts.text).toBe(1);
+    expect(counts.ppt).toBe(0);
+    expect(counts.pdf).toBe(0);
+    expect(counts.image).toBe(0);
+    expect(counts.archive).toBe(0);
+    expect(counts.other).toBe(0);
+  });
+
+  it("listProjectFiles 支持按类别与关键词过滤", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-list-"));
+    const wsRoot = join(root, "ws");
+    const dataDir = join(root, "data");
+    await mkdir(join(wsRoot, "中科云", "2026-08-20_官网改版"), { recursive: true });
+    await writeFile(join(wsRoot, "中科云", "2026-08-20_官网改版", "project.md"), "---\ntitle: 官网改版\n---\n");
+    await writeFile(join(wsRoot, "中科云", "2026-08-20_官网改版", "方案.docx"), "x");
+    await writeFile(join(wsRoot, "中科云", "2026-08-20_官网改版", "预算.xlsx"), "y");
+    const ctx = new Context();
+    const service = new WorkbenchService(ctx, { workspaceRoot: wsRoot, dataDir });
+    try {
+      const all = await service.listProjectFiles({ id: "2026-08-20_官网改版" }, new AbortController().signal);
+      expect(all.byCategory.word).toBe(1);
+      expect(all.byCategory.excel).toBe(1);
+      expect(all.files).toHaveLength(3);
+
+      const onlyExcel = await service.listProjectFiles(
+        { id: "2026-08-20_官网改版", category: "excel" },
+        new AbortController().signal,
+      );
+      expect(onlyExcel.files.map((f) => f.name)).toEqual(["预算.xlsx"]);
+
+      const keyword = await service.listProjectFiles(
+        { id: "2026-08-20_官网改版", query: "方案" },
+        new AbortController().signal,
+      );
+      expect(keyword.files.map((f) => f.name)).toEqual(["方案.docx"]);
+
+      await expect(
+        service.listProjectFiles({ id: "不存在" }, new AbortController().signal),
+      ).rejects.toThrow("project not found");
+    } finally {
+      service.stopWatch();
+    }
+  });
+});
+
+describe("会话触发器", () => {
+  it("chipLabel 按显示宽度截断中文", () => {
+    expect(chipLabel("官网改版")).toBe("官网改版");
+    expect(chipLabel("")).toBe("项目");
+    const long = "这是一个非常长的项目名称用来测试截断逻辑是否工作";
+    const out = chipLabel(long);
+    expect(out.endsWith("…")).toBe(true);
+    expect(out.startsWith("这是一")).toBe(true);
+    expect([...out]).toHaveLength(4);
+  });
+
+  it("formatProjectRef 汇总项目上下文", () => {
+    const ref = formatProjectRef({
+      id: "2026-08-20_官网改版",
+      folderPath: "/ws/中科云/2026-08-20_官网改版",
+      title: "官网改版",
+      createdMs: 1,
+      stage: "execution",
+      tags: ["官网", "前端"],
+      hasProjectDoc: true,
+      customerId: "中科云",
+      customerName: "中科云",
+      archived: false,
+      productLine: "数据中台",
+      owner: "张三",
+      startedAt: "2026-08-01",
+      dueAt: "2026-09-01",
+      projectMarkdown: "# 目标\n上线官网",
+    });
+    expect(ref).toContain("工作台项目：官网改版");
+    expect(ref).toContain("客户：中科云");
+    expect(ref).toContain("阶段：execution");
+    expect(ref).toContain("产品线：数据中台");
+    expect(ref).toContain("负责人：张三");
+    expect(ref).toContain("截止日期：2026-09-01");
+    expect(ref).toContain("标签：官网、前端");
+    expect(ref).toContain("--- project.md ---");
+  });
+
+  it("formatProjectRef 无 markdown 时不含文档段", () => {
+    const ref = formatProjectRef({
+      id: "x",
+      folderPath: "/x",
+      title: "无文档",
+      createdMs: 1,
+      stage: "opportunity",
+      tags: [],
+      hasProjectDoc: false,
+      customerId: "c",
+      customerName: "客户",
+      archived: false,
+      projectMarkdown: "",
+    });
+    expect(ref).toContain("工作台项目：无文档");
+    expect(ref).not.toContain("project.md");
+  });
+});
