@@ -1,16 +1,9 @@
 {
   "name": "dsh-workbench",
   "version": "0.1.0",
+  "private": true,
   "description": "AI-assisted local project management workbench for DeepSeek Harness",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/your-name/dsh-workbench.git"
-  },
-  "bugs": {
-    "url": "https://github.com/your-name/dsh-workbench/issues"
-  },
-  "homepage": "https://github.com/your-name/dsh-workbench#readme",
   "keywords": [
     "deepseek-harness",
     "project-management",
@@ -20,22 +13,30 @@
   "engines": {
     "node": ">=22.19.0"
   },
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@11.7.0",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
-    ".": "./lib/index.js",
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
     "./client": "./lib/client.js",
-    "./typert": "./lib/typert.host.js",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/index.js",
-    "lib/client.js",
-    "lib/typert.host.js",
+    "lib/*.js",
+    "lib/*.d.ts",
     "cordis.patch.yml",
     "README.md",
-    "docs/*.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "docs/development.md",
+    "docs/adr/*.md",
     "LICENSE"
   ],
   "dsh": {
@@ -50,6 +51,7 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins",
         "@deepseek-ai/dsh-client-ui-slots"
@@ -69,35 +71,43 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-settings": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6 || 0.1.0-rc.7",
-    "react": "^18.2.0"
+    "@deepseek-ai/dsh-api-remotes": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.7",
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-api-remotes": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-atomic-write": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-code-runtime": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-compaction": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-output-retention": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-timeout": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
     "@types/node": "^22.20.1",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
@@ -105,5 +115,12 @@
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "tests"
+  },
+  "author": "dsh-workbench contributors",
+  "types": "./lib/index.d.ts"
 }

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Audit production dependencies
+        run: pnpm audit --prod
+      - name: Inspect release package
+        run: |
+          mkdir -p dist unpacked
+          pnpm pack --pack-destination dist
+          tar -xzf dist/dsh-workbench-*.tgz -C unpacked
+          test ! -e unpacked/package/plugins
+          test ! -e unpacked/package/artifacts
+          test ! -e unpacked/package/node_modules
+          if grep -R -n -E '/Users/|/home/[^/]+/|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' unpacked/package; then
+            echo "release package contains a local path or private key marker"
+            exit 1
+          fi

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
@@ -30,7 +30,12 @@ import {
   categoryOfFile,
   scanProjectFiles,
 } from "../src/files.ts";
-import { listProjectsRequestSchema } from "../src/schemas.ts";
+import {
+  inspectWorkspacePathsRequestSchema,
+  listProjectsRequestSchema,
+  listProjectsResultSchema,
+  workspacePathStatusResultSchema,
+} from "../src/schemas.ts";
 import type { ProjectFile } from "../src/types.ts";
 import {
   chipLabel,
@@ -38,12 +43,269 @@ import {
 } from "../src/client/projectTriggers.ts";
 import {
   decodeOverlay,
+  decodeLegacyOverlay,
   emptyOverlay,
   loadOverlay,
   pushRecentWorkspace,
   saveOverlay,
   withOverlayLock,
 } from "../src/overlay.ts";
+import { en, zh } from "../src/client/locales.ts";
+import { resolveConfiguredPath, validateConfig } from "../src/config.ts";
+import {
+  dragCarriesFiles,
+  shouldBridgeFileDragTarget,
+} from "../src/client/fileDropBridge.ts";
+
+describe("配置契约", () => {
+  it("接受绝对路径与 home 缩写，拒绝相对路径", () => {
+    expect(resolveConfiguredPath("dataDir", "~/.dsh-workbench")).toMatch(/[/\\]\.dsh-workbench$/);
+    expect(() => validateConfig({ workspaceRoot: "relative/workspace", dataDir: "/tmp/data" }))
+      .toThrow("workspaceRoot must be an absolute path or start with ~");
+    expect(() => validateConfig({ workspaceRoot: "/tmp/workspace", dataDir: "relative/data" }))
+      .toThrow("dataDir must be an absolute path or start with ~");
+  });
+});
+
+describe("UI contract", () => {
+  it("文件拖放兼容层仅桥接侧边栏非资源管理器区域", () => {
+    const panel = {} as Element;
+    const panelTarget = {
+      closest: (selector: string) => selector === "[data-dsh-panel-host]" ? panel : null,
+    } as unknown as EventTarget;
+    const explorerTarget = {
+      closest: (selector: string) => {
+        if (selector === "[data-dsh-panel-host]") return panel;
+        if (selector.includes('[class*="_explorer"]')) return {} as Element;
+        return null;
+      },
+    } as unknown as EventTarget;
+    const chatTarget = {
+      closest: () => null,
+    } as unknown as EventTarget;
+
+    expect(shouldBridgeFileDragTarget(panelTarget)).toBe(true);
+    expect(shouldBridgeFileDragTarget(explorerTarget)).toBe(false);
+    expect(shouldBridgeFileDragTarget(chatTarget)).toBe(false);
+    expect(dragCarriesFiles({ dataTransfer: { types: ["Files"] } as unknown as DataTransfer })).toBe(true);
+    expect(dragCarriesFiles({ dataTransfer: { types: ["text/plain"] } as unknown as DataTransfer })).toBe(false);
+  });
+
+  it("中英文文案键保持一致且不暴露占位键", () => {
+    expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort());
+    expect(zh["settings.expand"]).toBe("展开设置");
+    expect(en["settings.collapse"]).toBe("Collapse settings");
+  });
+
+  it("可见文案不使用长破折号作为占位或分隔符", () => {
+    for (const value of [...Object.values(zh), ...Object.values(en)]) {
+      expect(value).not.toMatch(/[—–]/);
+    }
+  });
+
+  it("项目文件区的结构类都有对应样式", async () => {
+    const css = await readFile(new URL("../src/client/WorkbenchProjectDetail.css", import.meta.url), "utf8");
+    for (const className of [
+      "detailFiles",
+      "detailFilesToolbar",
+      "detailFilesGroup",
+      "detailFileRow",
+      "detailFileIcon",
+      "detailFileBody",
+      "detailFileName",
+      "detailFileMeta",
+    ]) {
+      expect(css).toContain(`.${className}`);
+    }
+  });
+
+  it("多工作台 UI 覆盖单栏折叠、管理删除与策略确认", async () => {
+    const component = await readFile(new URL("../src/client/sidebar/SpaceContextRail.tsx", import.meta.url), "utf8");
+    const css = await readFile(new URL("../src/client/sidebar/SpaceContextRail.css", import.meta.url), "utf8");
+    expect(component).toContain('event.key.toLowerCase() === "k"');
+    expect(component).toContain('event.key === "ArrowDown"');
+    expect(component).toContain('role="dialog"');
+    expect(component).toContain("space.policyHint");
+    expect(component).toContain("space.keep");
+    expect(component).toContain('className="spaceLibraryList"');
+    expect(component).toContain('className={expanded ? "spaceLibraryGroup expanded"');
+    expect(component).toContain('const [expandedSpaceId, setExpandedSpaceId] = useState<string>()');
+    expect(component).toContain('void select(space.id)');
+    expect(component).toContain('{t("space.add")}');
+    expect(component).toContain('{t("space.manage")}');
+    expect(component).toContain('t("space.settings")');
+    expect(component).toContain('className="spaceManageRail"');
+    expect(component).toContain('hidden={!expanded}');
+    expect(component).toContain('className="spaceRemoveButton"');
+    expect(component).toContain('className="spacePathField"');
+    expect(component).toContain('t("space.changePath")');
+    expect(component).toContain('t("space.pathChangeConfirm")');
+    expect(component).toContain("await face.pickDirectory()");
+    expect(component).toContain("face.updateSpace({ spaceId: space.id, rootPath })");
+    expect(component).toContain('window.addEventListener("focus", onFocus)');
+    expect(component).toContain('t("space.lastRequired")');
+    expect(component).not.toContain("draggable");
+    expect(component).not.toContain("dataTransfer");
+    expect(component).toContain('t("space.moveUp")');
+    expect(component).toContain('t("space.moveDown")');
+    expect(component).toContain("await face.listModels()");
+    expect(component).toContain("<optgroup");
+    expect(component).toContain('t("space.inheritDshModel")');
+    expect(component).not.toContain('t("space.useWorkbenchModel")');
+    expect(component).not.toContain('<label>{t("space.modelProvider")}<input');
+    expect(component).not.toContain("<label>Name<");
+    expect(css).toContain(".spaceContext.library");
+    expect(css).toContain(".spaceLibraryRow.selected");
+    expect(css).toContain(".spaceLibraryChildren");
+    expect(css).toContain("@media (max-width:600px)");
+    expect(css).toContain("prefers-reduced-motion:reduce");
+    expect(css).toContain("--dsw-space-blue");
+    expect(css).toContain(".spaceSectionHeader");
+    expect(css).toContain(".spaceRemoveButton");
+    expect(css).toContain(".spacePathField");
+    expect(css).toContain(".spaceModelField");
+  });
+
+  it("Codex 导航保持紧凑、单栏并交还 DSH 原生侧栏拖拽", async () => {
+    const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    const railCss = await readFile(new URL("../src/client/sidebar/SpaceContextRail.css", import.meta.url), "utf8");
+    expect(root).toContain("style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}");
+    expect(root).not.toContain("WORKBENCH_SIDEBAR_WIDTH");
+    expect(root).not.toContain("useWorkbenchSidebarWidth");
+    expect(rootCss).not.toContain("data-workbench-sidebar-shell");
+    expect(rootCss).toContain(".sidebarLibraryScroll");
+    expect(rootCss).toContain("scrollbar-gutter: stable");
+    expect(railCss).toContain(".spaceContext.library");
+  });
+
+  it("侧栏底部按 DSH list 插槽纵向承载多个插件并保留折叠态入口", async () => {
+    const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    expect(root).toContain('renderSlot("sidebar.footer.action", { wide })');
+    expect(root.indexOf('renderSlot("sidebar.footer.action", { wide })'))
+      .toBeLessThan(root.indexOf('renderSlot("sidebar.settings", { wide })'));
+    expect(rootCss).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(rootCss).toContain("grid-auto-rows: max-content");
+    expect(rootCss).toContain("max-height: min(36vh, 288px)");
+    expect(rootCss).toContain("overscroll-behavior: contain");
+    expect(rootCss).not.toContain(".footerActions:has(");
+    expect(rootCss).not.toContain(".footerActions > *");
+    expect(rootCss).toContain("max-height: calc(100vh - 164px)");
+    expect(rootCss).not.toContain(".collapsed .regionArea {\n  display: none");
+    expect(rootCss).not.toContain(".collapsed .footArea {\n  display:none");
+    expect(rootCss).not.toContain(".collapsed .footerActions {\n  display: none");
+  });
+
+  it("侧栏字阶使用 DSH 原生 typography tokens 并按层级统一", async () => {
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    const hierarchy = rootCss.slice(rootCss.indexOf("0.9.5 typography hierarchy"));
+    expect(hierarchy).toContain("font-family: var(--dsw-font-family)");
+    expect(hierarchy).toContain("font: var(--dsw-font-base-strong-16)");
+    expect(hierarchy).toContain("font: var(--dsw-font-s-strong-14)");
+    expect(hierarchy).toContain("font: var(--dsw-font-xs-strong-13)");
+    expect(hierarchy).toContain("font: var(--dsw-font-xs-13)");
+    expect(hierarchy).toContain("font: var(--dsw-font-xxs-strong-12)");
+    expect(hierarchy).toContain("font: var(--dsw-font-xxs-12)");
+    expect(hierarchy).toContain(".spaceLibraryName");
+    expect(hierarchy).toContain(".customerName");
+    expect(hierarchy).toContain(".rowTitleText");
+    expect(hierarchy).toContain(".managedSessionTitle");
+    expect(hierarchy).toContain(".basicProjectMain > span");
+  });
+
+  it("普通会话与工作台会话互斥，客户和项目内可直接进入与删除会话", async () => {
+    const panel = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarPanel.tsx", import.meta.url), "utf8");
+    const detail = await readFile(new URL("../src/client/WorkbenchProjectDetail.tsx", import.meta.url), "utf8");
+    const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const basicPanel = await readFile(new URL("../src/client/sidebar/UnmanagedSessionsPanel.tsx", import.meta.url), "utf8");
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    const client = await readFile(new URL("../src/client/index.tsx", import.meta.url), "utf8");
+    const host = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
+    expect(panel).toContain('className="customerExpand"');
+    expect(panel).toContain('t("customer.openChat")');
+    expect(panel).toContain("await openProjectSession(folderPath)");
+    expect(panel).toContain("setActiveSessionPath(folderPath)");
+    expect(panel).toContain("rebaseDirectoryFromAliases(currentSessionPath ?? activeSessionPath, selectedRootPath, selectedRootAliases)");
+    expect(panel).toContain('t("session.openFailed")');
+    expect(panel).not.toContain('className="workspaceBar"');
+    expect(panel).not.toContain('<span>{t("library.title")}</span>');
+    expect(panel).toContain('className="workbenchInlineToolbar"');
+    expect(panel).toContain('className="inlineCreateMenuButton"');
+    expect(panel).toContain('t("toolbar.addCustomerOrProject")');
+    expect(panel).not.toContain("filterMenuOpen");
+    expect(panel).not.toContain("PROJECT_STAGES");
+    expect(panel).not.toContain('t(`stage.${project.stage}`');
+    expect(panel).not.toContain('className="emptyCreateCustomer"');
+    expect(detail).not.toContain('t("detail.stage")');
+    expect(detail).not.toContain("draftStage");
+    expect(panel).toContain("await deleteProject(projectDeleteTarget.id, projectDeleteTarget.customerId)");
+    expect(panel).toContain('const result = await listProjects("", "all"');
+    expect(panel).toContain("managedSessions.byTargetId[project.folderPath]");
+    expect(panel).toContain('className="rowAction rowDeleteAction"');
+    expect(panel).not.toContain("<WorkbenchDashboard");
+    expect(panel).not.toContain('className="filterRow"');
+    expect(root).toContain('<SpaceContextRail');
+    expect(root).toContain('className={wide ? "basicPrimaryNewSession" : "newSession"}');
+    expect(root).toContain('className="sidebarLibraryScroll"');
+    expect(root).toContain('query={query}');
+    expect(root).not.toContain('className="tabRow primaryModeRow"');
+    expect(root).toContain("<UnmanagedSessionsPanel");
+    expect(root).toContain("managedRootPaths={managedRootPaths}");
+    expect(root).toContain("removeBasicProject={removeBasicProject}");
+    expect(root).toContain("startProjectSession={startProjectSession}");
+    expect(basicPanel).toContain('className="basicProjectNew"');
+    expect(basicPanel).toContain('t("sessions.project.newChat")');
+    expect(root).toContain("pickDirectory={workbenchFace.pickDirectory}");
+    expect(root).toContain('className="sidebarSearch"');
+    expect(root.indexOf('className="sidebarSearch"')).toBeLessThan(root.indexOf('className={wide ? "basicPrimaryNewSession" : "newSession"}'));
+    expect(rootCss).not.toContain('.regionArea:has(input:not([tabindex="-1"])) .headerNewSession');
+    expect(panel).toContain("deriveWorkbenchSessions(");
+    expect(panel).toContain("sessionsByProjectId");
+    expect(panel).toContain("archiveSession={archiveSession}");
+    expect(root).toContain('<WorkbenchBrand name={sidebarTitle} />');
+    expect(panel).not.toContain('className="primaryActionGroup"');
+    expect(panel).not.toContain('className="primaryNewSession"');
+    expect(panel).toContain('const [expanded, setExpanded] = useState(false)');
+    expect(client).toContain("spaces: listed.spaces");
+    expect(client).toContain("inferLegacyRootAliases(");
+    expect(client).toContain("...(aliasesBySpace[space.id] ?? [])");
+    expect(client).toContain("await ctx.workspaces.archiveSession(sessionId)");
+    expect(client).toContain("await ctx.workspaces.delete(workspaceId)");
+    expect(client).toContain("await remote.inspectWorkspacePaths");
+    expect(client).toContain("await ctx.workspaces.delete(item.workspaceId)");
+    expect(client).toContain('window.addEventListener("focus", onFocus)');
+    expect(client).toContain('window.removeEventListener("focus", onFocus)');
+    expect(client).toContain('const DEFAULT_ORDINARY_WORKSPACE_TITLE = "normal workspace"');
+    expect(client).toContain("void startDefaultOrdinarySession(false)");
+    expect(client).toContain("await startDefaultOrdinarySession(true)");
+    expect(client).toContain("ctx.workspaces.startSession(workspace.workspaceId)");
+    expect(client).toContain("startProjectSession: async (workspaceId)");
+    expect(client).not.toContain("ctx.workspaces.createDirectory(");
+    expect(host).not.toContain("CASUAL_CHAT_DIRECTORY");
+    expect(host).not.toContain(".dsh-casual-chats");
+    expect(client).toContain("__dshWorkbenchFreshPage");
+    expect(client).toContain("ctx.workspaces.startSession(targetWorkspaceId)");
+    expect(client).toContain('window.setTimeout(() => { void load(); }, 250)');
+  });
+});
+
+describe("Workspace 注册路径自愈", () => {
+  it("批量区分仍存在的目录与已经删除的历史路径", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wb-workspace-paths-"));
+    const existing = join(root, "existing");
+    const missing = join(root, "missing");
+    await mkdir(existing);
+    const ctx = new Context();
+    const service = new WorkbenchService(ctx, { workspaceRoot: root, dataDir: join(root, "data") });
+    const request = inspectWorkspacePathsRequestSchema.parse({ paths: [existing, missing, existing] });
+    const result = await service.inspectWorkspacePaths(request, new AbortController().signal);
+    expect(workspacePathStatusResultSchema.parse(result)).toEqual({
+      availablePaths: [existing],
+      missingPaths: [missing],
+    });
+  });
+});
 
 describe("frontmatter", () => {
   it("解析基础标量、数组与注释", () => {
@@ -293,7 +555,7 @@ describe("catalog 客户管理", () => {
 
 describe("overlay", () => {
   it("decodeOverlay 兼容缺省与非法字段", () => {
-    const store = decodeOverlay({
+    const store = decodeLegacyOverlay({
       schemaVersion: 1,
       members: [{ uid: "u1", name: "张三" }, { uid: "", name: "" }],
       recentWorkspaces: ["/a", "/b", "", 42],
@@ -323,23 +585,31 @@ describe("overlay", () => {
     expect(pushRecentWorkspace(many, "/9")[0]).toBe("/9");
   });
 
-  it("recentWorkspaces 可原子往返", async () => {
+  it("Space 顺序可原子往返", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
     const store = emptyOverlay();
-    store.recentWorkspaces = ["/a", "/b"];
     await saveOverlay(dir, store);
-    expect((await loadOverlay(dir)).recentWorkspaces).toEqual(["/a", "/b"]);
+    expect(Object.keys((await loadOverlay(dir)).spaces)).toEqual(Object.keys(store.spaces));
   });
 
   it("loadOverlay 文件缺失时返回空 overlay", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
-    expect(await loadOverlay(dir)).toEqual(emptyOverlay());
+    const loaded = await loadOverlay(dir);
+    const expected = emptyOverlay();
+    expect(loaded).toEqual({
+      ...expected,
+      spaces: Object.fromEntries(Object.entries(expected.spaces).map(([id, space]) => [id, {
+        ...space,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      }])),
+    });
   });
 
   it("saveOverlay 原子写入后可重新读取", async () => {
     const dir = await mkdtemp(join(tmpdir(), "wb-overlay-"));
     const store = emptyOverlay();
-    store.workspaceRoot = "/workspace";
+    store.spaces[store.defaultSpaceId]!.rootPath = "/workspace";
     store.projects["2026-08-20_demo"] = { stage: "execution" };
     await saveOverlay(dir, store);
     expect(await loadOverlay(dir)).toEqual(store);
@@ -417,7 +687,7 @@ describe("AI 增强（统计/到期/批量）", () => {
     const { ctx, service, wsRoot } = await makeFixture();
     try {
       await seedWorkspace(wsRoot);
-      const overlay = emptyOverlay();
+      const overlay = emptyOverlay(wsRoot);
       overlay.projects["2026-08-10_官网改版"] = { archived: true };
       await saveOverlay(service.dataDir, overlay);
 
@@ -477,6 +747,20 @@ describe("AI 增强（统计/到期/批量）", () => {
         expect(result.projects.map((p) => p.id)).toEqual(all.projects.map((p) => p.id));
         expect(result.customers.length).toBe(all.customers.length);
       }
+    } finally {
+      service.stopWatch();
+    }
+  });
+
+  it("新建空客户后 listProjects 结果通过 Typert result schema", async () => {
+    const { service } = await makeFixture();
+    try {
+      const signal = new AbortController().signal;
+      await service.createCustomer({ name: "测试客户" }, signal);
+      const result = await service.listProjects({ query: "", filter: "all" }, signal);
+      expect(result.customers.map((customer) => customer.name)).toEqual(["测试客户"]);
+      expect(result.projects).toEqual([]);
+      expect(listProjectsResultSchema.safeParse(result)).toMatchObject({ success: true });
     } finally {
       service.stopWatch();
     }

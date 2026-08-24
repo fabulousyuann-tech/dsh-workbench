@@ -9,9 +9,13 @@ function textBlock(content: string): { type: "text"; text: string }[] {
   return [{ type: "text", text: content }];
 }
 
+const spaceParameter = { type: "string" as const, description: "可选 Workbench Space ID；省略时使用当前选择，再回退默认 Space" };
+
 /** 把项目详情投影为纯 JSON 值（丢弃内部路径/时间戳字段），供模型输出 schema 校验。 */
-function projectDetailValue(project: ProjectDetail) {
+function projectDetailValue(project: ProjectDetail, scope: { spaceId: string; rootPath: string }) {
   return {
+    spaceId: scope.spaceId,
+    workspaceRoot: scope.rootPath,
     id: project.id,
     title: project.title,
     customerName: project.customerName,
@@ -30,11 +34,12 @@ function listCustomersTool(service: WorkbenchService): ToolDefinition {
   return defineTool({
     name: "workbench_list_customers",
     description: "列出工作台中的所有客户（每个客户是一个顶层文件夹），可用于定位要创建项目的客户 ID。",
-    parameters: {},
+    parameters: { spaceId: spaceParameter },
     output: {
       schema: {
-        type: "array",
-        items: {
+        type: "object", additionalProperties: false, properties: {
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
+          customers: { type: "array", required: true, items: {
           type: "object",
           additionalProperties: true,
           properties: {
@@ -42,21 +47,22 @@ function listCustomersTool(service: WorkbenchService): ToolDefinition {
             name: { type: "string", required: true, description: "客户名称" },
             projectCount: { type: "integer", required: true, description: "该客户下的项目数" },
           },
+          } },
         },
       },
       render: (_args, value) => {
-        if (value.length === 0) return textBlock("工作台当前没有客户。");
-        const lines = value.map((c) => `- ${c.name}（${c.id}，${c.projectCount} 个项目）`);
-        return textBlock(`客户列表（${value.length}）：\n${lines.join("\n")}`);
+        if (value.customers.length === 0) return textBlock(`Space ${value.spaceId} 当前没有客户。`);
+        const lines = value.customers.map((c) => `- ${c.name}（${c.id}，${c.projectCount} 个项目）`);
+        return textBlock(`Space：${value.spaceId}\n根目录：${value.workspaceRoot}\n客户列表（${value.customers.length}）：\n${lines.join("\n")}`);
       },
     },
-    async execute(_args, exec) {
-      const result = await service.listProjects({ query: "", filter: "all" }, exec.signal);
-      return result.customers.map((customer) => ({
+    async execute(args, exec) {
+      const result = await service.listProjects({ query: "", filter: "all", ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal);
+      return { spaceId: result.settings.spaceId, workspaceRoot: result.settings.workspaceRoot, customers: result.customers.map((customer) => ({
         id: customer.id,
         name: customer.name,
         projectCount: customer.projects.length,
-      }));
+      })) };
     },
   });
 }
@@ -67,6 +73,7 @@ function listProjectsTool(service: WorkbenchService): ToolDefinition {
     description:
       "列出工作台中的项目。可按客户名、关键词、阶段过滤；返回项目概览与当前工作空间目录。",
     parameters: {
+      spaceId: spaceParameter,
       customer: { type: "string", description: "按客户名称（部分匹配）过滤" },
       query: { type: "string", description: "按标题/ID/客户/产品线/标签关键词过滤" },
       filter: {
@@ -81,6 +88,7 @@ function listProjectsTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           workspaceRoot: { type: "string", required: true, description: "工作空间根目录" },
+          spaceId: { type: "string", required: true, description: "实际解析的 Space ID" },
           revision: { type: "integer", required: true, description: "目录修订号" },
           customers: {
             type: "array",
@@ -136,7 +144,7 @@ function listProjectsTool(service: WorkbenchService): ToolDefinition {
     },
     async execute(args, exec) {
       const result = await service.listProjects(
-        { query: args.query ?? "", filter: args.filter ?? "all" },
+        { query: args.query ?? "", filter: args.filter ?? "all", ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) },
         exec.signal,
       );
       const customer = args.customer?.trim().toLowerCase();
@@ -148,6 +156,7 @@ function listProjectsTool(service: WorkbenchService): ToolDefinition {
           );
       return {
         workspaceRoot: result.settings.workspaceRoot,
+        spaceId: result.settings.spaceId,
         revision: result.revision,
         customers: result.customers.map((item) => ({
           id: item.id,
@@ -176,7 +185,9 @@ function getProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "获取单个项目的详细信息，包括 frontmatter 元数据与 project.md 正文，用于了解项目目标、范围与进度。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      customerId: { type: "string", description: "所属客户 ID；同一工作台存在同名项目时必填" },
     },
     output: {
       schema: {
@@ -184,6 +195,8 @@ function getProjectTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: true,
         properties: {
           id: { type: "string", required: true },
+          spaceId: { type: "string", required: true },
+          workspaceRoot: { type: "string", required: true },
           title: { type: "string", required: true },
           customerName: { type: "string", required: true },
           stage: { type: "string", required: true, enum: [...PROJECT_STAGES] },
@@ -213,7 +226,8 @@ function getProjectTool(service: WorkbenchService): ToolDefinition {
       },
     },
     async execute(args, exec) {
-      return projectDetailValue(await service.getProject({ id: args.id }, exec.signal));
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return projectDetailValue(await service.getProject({ id: args.id, ...(args.customerId === undefined ? {} : { customerId: args.customerId }), ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal), scope);
     },
   });
 }
@@ -224,6 +238,7 @@ function createProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "在指定客户下新建一个项目：创建项目文件夹并写入 project.md 模板。客户 ID 可通过 workbench_list_customers 获取。",
     parameters: {
+      spaceId: spaceParameter,
       customerId: { type: "string", required: true, description: "客户 ID（客户文件夹名）" },
       title: { type: "string", required: true, description: "项目标题" },
       productLine: { type: "string", description: "产品线" },
@@ -239,6 +254,8 @@ function createProjectTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           id: { type: "string", required: true, description: "新项目 ID（项目文件夹名）" },
+          spaceId: { type: "string", required: true },
+          workspaceRoot: { type: "string", required: true },
           folderPath: { type: "string", required: true, description: "项目文件夹绝对路径" },
         },
       },
@@ -249,9 +266,11 @@ function createProjectTool(service: WorkbenchService): ToolDefinition {
         customerId: args.customerId,
         title: args.title,
       };
+      if (args.spaceId !== undefined) (request as typeof request & { spaceId: string }).spaceId = args.spaceId;
       if (args.productLine !== undefined) request.productLine = args.productLine;
       if (args.stage !== undefined) request.stage = args.stage;
-      return service.createProject(request, exec.signal);
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return { ...await service.createProject(request, exec.signal), spaceId: scope.spaceId, workspaceRoot: scope.rootPath };
     },
   });
 }
@@ -262,6 +281,7 @@ function createCustomerTool(service: WorkbenchService): ToolDefinition {
     description:
       "在工作空间根目录新建一个客户（顶层文件夹）。客户 ID 即文件夹名。新建后即可用 workbench_create_project 在该客户下创建项目。",
     parameters: {
+      spaceId: spaceParameter,
       name: { type: "string", required: true, description: "客户名称（自动清理非法字符；重名自动加 -2）" },
     },
     output: {
@@ -270,13 +290,15 @@ function createCustomerTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           id: { type: "string", required: true, description: "客户 ID（客户文件夹名）" },
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
           folderPath: { type: "string", required: true, description: "客户文件夹绝对路径" },
         },
       },
       render: (_args, value) => textBlock(`已创建客户 ${value.id}：${value.folderPath}`),
     },
     async execute(args, exec) {
-      return service.createCustomer({ name: args.name }, exec.signal);
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return { ...await service.createCustomer({ name: args.name, ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal), spaceId: scope.spaceId, workspaceRoot: scope.rootPath };
     },
   });
 }
@@ -288,6 +310,7 @@ function renameCustomerTool(service: WorkbenchService): ToolDefinition {
     description:
       "重命名客户：把客户文件夹整体改名（内部项目随目录一起迁移）。客户 ID 即改名前的文件夹名，重命名后 ID 变为新文件夹名。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "客户 ID（当前客户文件夹名）" },
       name: { type: "string", required: true, description: "新的客户名称" },
     },
@@ -297,6 +320,7 @@ function renameCustomerTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           id: { type: "string", required: true, description: "新的客户 ID（新文件夹名）" },
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
           name: { type: "string", required: true, description: "新的客户名称" },
           folderPath: { type: "string", required: true, description: "客户文件夹绝对路径" },
         },
@@ -304,7 +328,8 @@ function renameCustomerTool(service: WorkbenchService): ToolDefinition {
       render: (_args, value) => textBlock(`已重命名客户为 ${value.name}（${value.id}）：${value.folderPath}`),
     },
     async execute(args, exec) {
-      return service.renameCustomer({ id: args.id, name: args.name }, exec.signal);
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return { ...await service.renameCustomer({ id: args.id, name: args.name, ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal), spaceId: scope.spaceId, workspaceRoot: scope.rootPath };
     },
   });
 }
@@ -315,7 +340,9 @@ function updateProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "更新项目的元数据（标题、阶段、负责人、产品线）。用于把项目阶段推进到下一里程碑、指派负责人等。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      customerId: { type: "string", description: "所属客户 ID；同一工作台存在同名项目时必填" },
       title: { type: "string", description: "新的项目标题" },
       stage: { type: "string", enum: [...PROJECT_STAGES], description: "新的项目阶段" },
       owner: { type: "string", description: "新的负责人" },
@@ -329,14 +356,17 @@ function updateProjectTool(service: WorkbenchService): ToolDefinition {
         ),
     },
     async execute(args, exec) {
-      const request: { id: string; title?: string; stage?: ProjectStage; owner?: string; productLine?: string } = {
+      const request: { id: string; customerId?: string; title?: string; stage?: ProjectStage; owner?: string; productLine?: string } = {
         id: args.id,
       };
+      if (args.customerId !== undefined) request.customerId = args.customerId;
+      if (args.spaceId !== undefined) (request as typeof request & { spaceId: string }).spaceId = args.spaceId;
       if (args.title !== undefined) request.title = args.title;
       if (args.stage !== undefined) request.stage = args.stage;
       if (args.owner !== undefined) request.owner = args.owner;
       if (args.productLine !== undefined) request.productLine = args.productLine;
-      return projectDetailValue(await service.updateProject(request, exec.signal));
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return projectDetailValue(await service.updateProject(request, exec.signal), scope);
     },
   });
 }
@@ -348,7 +378,9 @@ function archiveProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "归档或恢复项目。归档后项目仍在列表中以“已归档”徽标标识（不影响按阶段过滤），适合已完结/暂停的项目；archived=false 恢复。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      customerId: { type: "string", description: "所属客户 ID；同一工作台存在同名项目时必填" },
       archived: {
         type: "boolean",
         description: "true 归档，false 恢复；默认 true",
@@ -362,11 +394,12 @@ function archiveProjectTool(service: WorkbenchService): ToolDefinition {
         ),
     },
     async execute(args, exec) {
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
       return projectDetailValue(
         await service.updateProject(
-          { id: args.id, archived: args.archived ?? true },
+          { id: args.id, archived: args.archived ?? true, ...(args.customerId === undefined ? {} : { customerId: args.customerId }), ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) },
           exec.signal,
-        ),
+        ), scope,
       );
     },
   });
@@ -379,7 +412,9 @@ function moveProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "把项目移动到另一个客户名下（项目文件夹整体迁移到目标客户目录）。目标客户 ID 可用 workbench_list_customers 获取。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      sourceCustomerId: { type: "string", description: "原所属客户 ID；同一工作台存在同名项目时必填" },
       customerId: { type: "string", required: true, description: "目标客户 ID（客户文件夹名）" },
     },
     output: {
@@ -388,9 +423,8 @@ function moveProjectTool(service: WorkbenchService): ToolDefinition {
         textBlock(`已移动项目：${JSON.stringify(value, null, 2)}`),
     },
     async execute(args, exec) {
-      return projectDetailValue(
-        await service.moveProject({ id: args.id, customerId: args.customerId }, exec.signal),
-      );
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return projectDetailValue(await service.moveProject({ id: args.id, customerId: args.customerId, ...(args.sourceCustomerId === undefined ? {} : { sourceCustomerId: args.sourceCustomerId }), ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal), scope);
     },
   });
 }
@@ -402,7 +436,10 @@ function deleteProjectTool(service: WorkbenchService): ToolDefinition {
     description:
       "删除项目：把项目文件夹移入工作空间的 .trash 回收站并清空其工作台记录。注意：建议先归档而非删除；删除前请与用户确认。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      customerId: { type: "string", description: "所属客户 ID；同一工作台存在同名项目时必填" },
+      confirmed: { type: "boolean", required: true, description: "仅在用户已明确确认删除时传 true" },
     },
     output: {
       schema: {
@@ -410,6 +447,7 @@ function deleteProjectTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           id: { type: "string", required: true, description: "已删除的项目 ID" },
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
           trashedPath: { type: "string", required: true, description: "回收站中的路径" },
         },
       },
@@ -417,7 +455,9 @@ function deleteProjectTool(service: WorkbenchService): ToolDefinition {
         textBlock(`已删除项目 ${value.id}，移入回收站：${value.trashedPath}`),
     },
     async execute(args, exec) {
-      return service.deleteProject({ id: args.id }, exec.signal);
+      if (args.confirmed !== true) throw new Error("delete requires confirmed=true after explicit user confirmation");
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return { ...await service.deleteProject({ id: args.id, ...(args.customerId === undefined ? {} : { customerId: args.customerId }), ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }) }, exec.signal), spaceId: scope.spaceId, workspaceRoot: scope.rootPath };
     },
   });
 }
@@ -429,7 +469,9 @@ function listProjectFilesTool(service: WorkbenchService): ToolDefinition {
     description:
       "列出项目文件夹内归集后的文件。按扩展名归为 word / excel / ppt / pdf / text / image / archive / other，可按类别或文件名关键词过滤。用于查找项目里的 Word、Excel、PPT、PDF 等文档。",
     parameters: {
+      spaceId: spaceParameter,
       id: { type: "string", required: true, description: "项目 ID（项目文件夹名）" },
+      customerId: { type: "string", description: "所属客户 ID；同一工作台存在同名项目时必填" },
       query: { type: "string", description: "按文件名 / 相对路径关键词过滤" },
       category: {
         type: "string",
@@ -443,6 +485,7 @@ function listProjectFilesTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           id: { type: "string", required: true, description: "项目 ID" },
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
           folderPath: { type: "string", required: true, description: "项目文件夹路径" },
           files: {
             type: "array",
@@ -504,12 +547,17 @@ function listProjectFilesTool(service: WorkbenchService): ToolDefinition {
       const result = await service.listProjectFiles(
         {
           id: args.id,
+          ...(args.customerId === undefined ? {} : { customerId: args.customerId }),
+          ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }),
           ...(args.query === undefined ? {} : { query: args.query }),
           ...(args.category === undefined ? {} : { category: args.category }),
         },
         exec.signal,
       );
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
       return {
+        spaceId: scope.spaceId,
+        workspaceRoot: scope.rootPath,
         id: result.id,
         folderPath: result.folderPath,
         files: result.files.map((file) => ({
@@ -531,13 +579,14 @@ function statisticsTool(service: WorkbenchService): ToolDefinition {
     name: "workbench_statistics",
     description:
       "获取工作台统计快照：项目总数、各阶段/客户/产品线/负责人分布、已归档/已交付数量、以及到期提醒概览（逾期/即将到期项目数）。",
-    parameters: {},
+    parameters: { spaceId: spaceParameter },
     output: {
       schema: {
         type: "object",
         additionalProperties: false,
         properties: {
           workspaceRoot: { type: "string", required: true, description: "工作空间根目录" },
+          spaceId: { type: "string", required: true },
           totalProjects: { type: "integer", required: true, description: "全部项目数（含归档）" },
           activeProjects: { type: "integer", required: true, description: "未归档项目数" },
           archivedProjects: { type: "integer", required: true, description: "已归档项目数" },
@@ -610,9 +659,10 @@ function statisticsTool(service: WorkbenchService): ToolDefinition {
         );
       },
     },
-    async execute(_args, exec) {
-      const stats = await service.statistics({}, exec.signal);
+    async execute(args, exec) {
+      const stats = await service.statistics(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
       return {
+        spaceId: stats.spaceId,
         workspaceRoot: stats.workspaceRoot,
         totalProjects: stats.totalProjects,
         activeProjects: stats.activeProjects,
@@ -637,6 +687,7 @@ function dueRemindersTool(service: WorkbenchService): ToolDefinition {
     description:
       "获取到期提醒：列出已过到期日（overdue）与未来几天内到期（dueSoon）的项目，可用于周会提醒、催办、排期。",
     parameters: {
+      spaceId: spaceParameter,
       days: { type: "integer", description: "提前提醒窗口（天），默认 7；0 只列已过期" },
       customer: { type: "string", description: "按客户名称（部分匹配）过滤" },
     },
@@ -646,6 +697,7 @@ function dueRemindersTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           workspaceRoot: { type: "string", required: true },
+          spaceId: { type: "string", required: true },
           horizonDays: { type: "integer", required: true, description: "提前提醒窗口（天）" },
           overdue: {
             type: "array",
@@ -705,6 +757,7 @@ function dueRemindersTool(service: WorkbenchService): ToolDefinition {
       const result = await service.dueReminders(
         {
           ...(args.days === undefined ? {} : { days: args.days }),
+          ...(args.spaceId === undefined ? {} : { spaceId: args.spaceId }),
           ...(args.customer === undefined ? {} : { customer: args.customer }),
         },
         exec.signal,
@@ -720,6 +773,7 @@ function dueRemindersTool(service: WorkbenchService): ToolDefinition {
         ...(item.owner === undefined ? {} : { owner: item.owner }),
       });
       return {
+        spaceId: result.spaceId,
         workspaceRoot: result.workspaceRoot,
         horizonDays: result.horizonDays,
         overdue: result.overdue.map(toValue),
@@ -736,6 +790,7 @@ function batchUpdateTool(service: WorkbenchService): ToolDefinition {
     description:
       "批量更新项目：对多个项目同时设置阶段、负责人、产品线、归档状态，或整体移动到另一个客户。执行前请与用户确认目标项目与改动。",
     parameters: {
+      spaceId: spaceParameter,
       ids: {
         type: "array",
         required: true,
@@ -754,6 +809,7 @@ function batchUpdateTool(service: WorkbenchService): ToolDefinition {
         additionalProperties: false,
         properties: {
           updated: { type: "integer", required: true, description: "成功处理的项目数" },
+          spaceId: { type: "string", required: true }, workspaceRoot: { type: "string", required: true },
           failed: { type: "integer", required: true, description: "失败的项目数" },
           errors: {
             type: "array",
@@ -781,12 +837,14 @@ function batchUpdateTool(service: WorkbenchService): ToolDefinition {
       const request: { ids: string[]; stage?: ProjectStage; owner?: string; productLine?: string; archived?: boolean; customerId?: string } = {
         ids: args.ids,
       };
+      if (args.spaceId !== undefined) (request as typeof request & { spaceId: string }).spaceId = args.spaceId;
       if (args.stage !== undefined) request.stage = args.stage;
       if (args.owner !== undefined) request.owner = args.owner;
       if (args.productLine !== undefined) request.productLine = args.productLine;
       if (args.archived !== undefined) request.archived = args.archived;
       if (args.customerId !== undefined) request.customerId = args.customerId;
-      return service.batchUpdate(request, exec.signal);
+      const scope = await service.resolveSpace(args.spaceId === undefined ? {} : { spaceId: args.spaceId }, exec.signal);
+      return { ...await service.batchUpdate(request, exec.signal), spaceId: scope.spaceId, workspaceRoot: scope.rootPath };
     },
   });
 }

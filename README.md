@@ -1,81 +1,68 @@
 # dsh-workbench
 
-AI 辅助的本地项目管理工作台，作为 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 插件即插即用。
+面向 DeepSeek Harness（DSH）的本地多工作台插件。它以“工作台 → 客户 → 项目 → 会话”组织目录，同时保留独立的普通会话与普通项目；同一条会话只显示在一个归属层级。
 
-以 **客户 → 项目** 的层级组织你的项目工作区，每个项目是一个带 `project.md` 的文件夹。插件自动扫描工作区并同步到 Harness 侧边栏，同时为 AI 提供客户/项目的查询与维护工具。
+当前公开版本：`0.1.0`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
 
-## 特性
+## 主要能力
 
-- **客户 → 项目 两级目录**：工作区内以客户为顶层目录，每个客户下是多个项目文件夹。
-- **侧边栏工作台面板**：替换默认侧边栏，展示客户分组、项目卡片（阶段、负责人、截止日期、标签）。
-- **仪表盘**：一键展开统计概览（项目总数 / 进行中 / 已交付 / 已归档 / 客户数）与到期提醒（逾期、即将到期），点击提醒直达项目详情。
-- **筛选与搜索**：按阶段 / 产品线 / 负责人筛选，按关键词搜索。
-- **新建项目**：在 UI 中直接创建客户与项目，自动生成 `project.md`。
-- **项目文件归集**：项目详情内置「项目文件」区，把 Word / Excel / PPT / PDF / 图片 / 压缩包等按类型自动归集，支持按类别与关键词过滤，点击可直接打开。
-- **会话引用项目**：在会话输入框输入 `@` 或 `/` 可引用当前 / 任意项目，把项目上下文（含 `project.md`）交给模型。
-- **AI 工具**：为 Harness 会话注入 `workbench_list_customers` / `workbench_list_projects` / `workbench_list_project_files` 等工具，模型可以直接查询与维护你的工作区。
-- **Overlay 状态**：项目阶段、负责人等非文件元数据保存在 `overlay.json`，不污染你的项目文件。
-- **设置页**：可在 Harness 设置中修改工作区根目录与数据目录。
+- Codex 式单列侧边栏：普通会话、普通项目和多个工作台共享一套紧凑导航。
+- 工作台、客户、项目、会话严格互斥归属，点击对应会话即可进入主聊天区。
+- 工作台根目录可在设置中重新关联；历史会话继续按旧路径映射，不改写 DSH 日志。
+- 客户与项目的创建、重命名、移动、归档和安全删除；删除内容进入工作台内的 `.trash`。
+- 项目文件按 Word、Excel、PPT、PDF、图片等类型归集和搜索。
+- 模型可使用 `workbench_*` 工具查询和维护工作台；删除工具要求显式确认。
+- 深浅主题、侧边栏收起/展开和 DSH 原生拖拽调宽。
 
-## 环境要求
+## 重要兼容说明
 
-- Node.js >= 22.19.0
-- pnpm >= 10
-- DeepSeek Harness（`@deepseek-ai/dsh-*` 系列 `0.1.0-rc.6` 或 `0.1.0-rc.7`）
+Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏；官方 `ui-workspace`、会话、模型、日志和主对话区仍由 DSH 管理。它不会修改 DSH 官方源码，也不会复制或合并其他插件。
 
-## 即插即用安装
+同一 profile 中不要同时启用另一个会接管 `ui-sidebar` 的插件。DSH 升级后应先在测试 profile 验证；目前只承诺上面列出的已验证版本，不承诺未知未来版本自动兼容。
 
-将 `dsh-workbench` 安装到 Harness 的 profile 中：
+## 安装
 
-```bash
-cd ~/.dsh/profiles/web   # 或 desktop profile
-pnpm add dsh-workbench
-```
+> npm 上的同名 `dsh-workbench` 属于其他项目。不要执行 `dsh plugin ... add dsh-workbench`，以免安装错误的软件包。
 
-然后在 profile 的 `package.json` 中注册 bundle：
-
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-workbench"]
-    }
-  }
-}
-```
-
-> 插件自带的 [cordis.patch.yml](./cordis.patch.yml) 会自动禁用内置 `ui-sidebar` 并注入工作台，无需手动配置。
-
-从 GitHub 安装（未发布 npm 时）：
+从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.0.tgz` 和对应 `.sha256`，校验后安装本地文件：
 
 ```bash
-pnpm add git+https://github.com/<your-name>/dsh-workbench.git
+shasum -a 256 -c dsh-workbench-0.1.0.tgz.sha256
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.0.tgz
+dsh --profile web --dump-config
+dsh --profile web
 ```
 
-## 工作区结构
+插件 bundle 发生变化后必须完整重启 DSH，仅刷新浏览器不够。`--dump-config` 中应保留官方 `ui-workspace`，`ui-sidebar` 被禁用，并出现 `dsh-workbench` 行。
 
-默认工作区为 `~/Documents/工作空间`（可在设置中修改）：
+也可以从可信、固定的 Git commit 安装源码；目标环境会执行 `prepare` 构建：
 
-```
-工作空间/
-├── 客户A/
-│   ├── 项目1/
-│   │   ├── project.md      # 项目元数据（frontmatter）
-│   │   └── ...             # 项目内容
-│   └── 项目2/
-│       └── project.md
-└── 客户B/
-    └── 项目3/
-        └── project.md
+```bash
+dsh plugin --profile web add github:<owner>/<repo>#<full-commit-sha>
 ```
 
-`project.md` frontmatter 示例：
+## 目录结构
+
+每个工作台对应一个独立根目录：
+
+```text
+工作台根目录/
+├── 客户 A/
+│   ├── 项目 1/
+│   │   ├── project.md
+│   │   └── 项目文件...
+│   └── 项目 2/
+└── 客户 B/
+    └── 项目 3/
+```
+
+`project.md` 可使用以下 frontmatter：
 
 ```yaml
 ---
 title: 数据中台建设
 productLine: 数据平台
-stage: planning        # opportunity | requirement | planning | execution | acceptance | retrospective
+stage: planning
 owner: 李四
 tags: [中台, 数据]
 startedAt: 2026-08-01
@@ -83,54 +70,49 @@ dueAt: 2026-12-31
 ---
 ```
 
-非文件状态（如阶段、负责人）若写在 frontmatter 会被同步；除此之外的临时状态保存在数据目录的 `overlay.json`。
+`stage` 支持 `opportunity`、`requirement`、`planning`、`execution`、`acceptance`、`retrospective`。插件自己的显示状态保存在 `dataDir/overlay.json`；DSH 会话与日志不存入该文件。
 
-## 配置项
+## 使用要点
+
+- 顶部“新建会话”创建普通会话；普通 DSH Workspace 显示在“项目”分区。
+- 工作台默认收起。展开后按客户、项目和其下会话显示，历史会话不会重复出现在普通会话。
+- 点击客户或项目名称进入对应目录会话；展开箭头只控制列表。
+- 工作台设置可更改名称、颜色、图标、顺序、默认项、模型策略和根目录路径。
+- 更改根目录只重新关联路径，不移动、复制或删除文件。请先自行移动完整目录，再在设置里选择新位置。
+- 删除客户或项目会移动到工作台根目录的 `.trash`；同名回收内容会自动增加序号，避免覆盖。
+- 外部删除目录后，插件会清理失效的 DSH Workspace 注册，但不会删除会话日志。
+
+## 配置
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `workspaceRoot` | `~/Documents/工作空间` | 客户 / 项目根目录 |
-| `dataDir` | `~/.dsh-workbench` | overlay 等非文件状态存储位置 |
+| `workspaceRoot` | `~/Documents/工作空间` | 首次创建默认工作台时使用的兼容入口 |
+| `dataDir` | `~/.dsh-workbench` | overlay、迁移备份等插件状态 |
+| `sidebarTitle` | `DSH` | 侧边栏左上角名称 |
 
-## AI 工具
+## 数据与升级安全
 
-插件注册的模型工具（模型可直接在会话中调用）：
+- overlay v1 首次读取时会先生成 `overlay.v1.<timestamp>.backup.json`，再原子迁移到 v2。
+- `0.1.0` 将项目状态按“工作台 + 客户 + 项目”隔离，避免不同客户的同名项目互相覆盖；旧的本地开发数据键在项目下次编辑时无损迁移。
+- 移除工作台只移除 Workbench 注册，不删除目录、项目或 DSH 会话。
+- 回滚插件前请停止 DSH，并备份 `dataDir` 与工作台目录。
 
-- `workbench_list_customers` — 列出全部客户及项目数
-- `workbench_list_projects` — 按客户 / 关键词 / 阶段筛选列出项目
-- `workbench_get_project` — 获取单个项目详情与 `project.md` 正文
-- `workbench_list_project_files` — 归集并列出项目内的文件（按 word / excel / ppt / pdf 等分类，可按类别与关键词过滤）
-- `workbench_create_project` — 在指定客户下新建项目并生成 `project.md`
-- `workbench_update_project` — 更新项目元数据（标题、阶段、负责人、产品线）
-- `workbench_archive_project` — 归档 / 恢复项目
-- `workbench_move_project` — 变更项目所属客户（移动文件夹）
-- `workbench_delete_project` — 删除项目（移入 `.trash`）
-- `workbench_create_customer` / `workbench_rename_customer` — 新建 / 重命名客户
-- `workbench_statistics` — 工作台统计：阶段 / 客户 / 产品线 / 负责人分布与到期概览
-- `workbench_due_reminders` — 到期提醒：已逾期与即将到期项目（支持 `days`、`customer` 过滤）
-- `workbench_batch_update` — 批量更新多个项目（阶段 / 负责人 / 产品线 / 归档 / 所属客户）
-
-模型可以在会话中直接说「列出所有客户和项目」「有哪些项目快到期了」「把官网改版和 App 项目标记为已完成」「找一下官网项目里的 PPT」来使用。
-
-## 在项目里工作
-
-**打开项目详情**：在左侧工作台展开客户分组，点击项目即可打开详情，包含项目元数据、`project.md` 文档，以及「项目文件」归集区。
-
-**引用项目进会话**：在会话输入框输入 `@` 会弹出项目候选（输入「当前项目」引用左侧打开的项目），`/` 可直接把当前打开的项目交给对话。被引用的项目会附上标题、客户、阶段、负责人、截止日期、标签与 `project.md` 正文，模型可以直接基于它工作。
-
-**文件归集**：项目文件夹内的文件按扩展名自动归为 `word / excel / ppt / pdf / text / image / archive / other` 八类。在项目详情的「项目文件」区可按类别切换、按文件名搜索，点击文件可直接在系统中打开。Word、Excel、PPT、PDF 等办公文件无需整理目录即可按类型快速查找。
-
-## 开发
+## 开发与发布
 
 ```bash
-pnpm install
-pnpm check    # typecheck + test + build
-pnpm test     # 仅运行测试
-pnpm build    # 仅构建（产物输出到 lib/）
+pnpm install --frozen-lockfile
+pnpm check
+pnpm pack --pack-destination artifacts
 ```
 
-详见 [docs/development.md](./docs/development.md)。
+本仓库设置为 `private: true`，用于阻止误发布到 npm 上的同名包；GitHub Release 的 `.tgz` 仍可正常生成和安装。开发说明见 [docs/development.md](./docs/development.md)，架构边界见 [ADR 0001](./docs/adr/0001-dsh-integration-boundaries.md)，变更记录见 [CHANGELOG.md](./CHANGELOG.md)。
+
+## 已知限制
+
+- 当前只提供 Web client bundle。
+- Host 与浏览器必须能访问同一套本地文件路径。
+- 未来 DSH 版本可能改变 sidebar slot 或 bundle patch 行为，升级后需要重新验证。
 
 ## License
 
-MIT © 2026 dsh-workbench contributors。详见 [LICENSE](./LICENSE)。
+MIT，见 [LICENSE](./LICENSE)。

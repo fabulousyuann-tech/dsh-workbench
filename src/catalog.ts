@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promi
 import { join } from "node:path";
 
 import { projectFrontmatter, buildProjectMarkdown } from "./frontmatter.ts";
+import { customerProjectKey } from "./overlay.ts";
 import type {
   CustomerSummary,
   ProjectFilter,
@@ -155,7 +156,8 @@ async function scanProject(
   const rawDoc = await readProjectMarkdown(folderPath);
   const frontmatter = rawDoc === "" ? { tags: [] as string[] } : projectFrontmatter(rawDoc);
 
-  const overlayItem = overlay.projects[folderName];
+  const overlayItem = overlay.projects[customerProjectKey(customer.id, folderName)]
+    ?? overlay.projects[folderName];
   const title = overlayItem?.title ?? frontmatter.title ?? folderTitle;
   const productLine = overlayItem?.productLine ?? frontmatter.productLine;
   const stage = overlayItem?.stage ?? frontmatter.stage ?? PROJECT_STAGE_DEFAULT;

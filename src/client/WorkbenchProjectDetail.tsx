@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, Input, Modal, RiskConfirmation } from "@deepseek-ai/dsh-client-ui-primitives";
 
 import type {
@@ -9,10 +9,9 @@ import type {
   ProjectDetail,
   ProjectFile,
   ProjectFilesResult,
-  ProjectStage,
   UpdateProjectRequest,
 } from "../types.ts";
-import { PROJECT_STAGES } from "../types.ts";
+import { parseFrontmatter } from "../frontmatter.ts";
 import type { WorkbenchKey } from "./locales.ts";
 import "./WorkbenchProjectDetail.css";
 
@@ -38,6 +37,14 @@ const FILE_CATEGORY_ORDER: readonly FileCategory[] = [
   "other",
 ];
 
+type DetailTab = "overview" | "document" | "files";
+
+const DETAIL_TABS: ReadonlyArray<{ value: DetailTab; label: WorkbenchKey }> = [
+  { value: "overview", label: "detail.tab.overview" },
+  { value: "document", label: "detail.tab.document" },
+  { value: "files", label: "detail.tab.files" },
+];
+
 export function WorkbenchProjectDetail({
   getProject,
   listProjectFiles,
@@ -48,18 +55,20 @@ export function WorkbenchProjectDetail({
   t,
   customers,
   projectId,
+  customerId,
   onClose,
   onSaved,
 }: {
-  getProject: (id: string) => Promise<ProjectDetail>;
+  getProject: (id: string, customerId?: string) => Promise<ProjectDetail>;
   listProjectFiles: (request: ListProjectFilesRequest) => Promise<ProjectFilesResult>;
   updateProject: (request: UpdateProjectRequest) => Promise<ProjectDetail>;
   moveProject: (request: MoveProjectRequest) => Promise<ProjectDetail>;
-  deleteProject: (id: string) => Promise<unknown>;
+  deleteProject: (id: string, customerId?: string) => Promise<unknown>;
   openPath: (path: string) => Promise<void>;
   t: (key: WorkbenchKey) => string;
   customers: CustomerSummary[];
   projectId: string;
+  customerId: string;
   onClose: () => void;
   onSaved?: () => void;
 }) {
@@ -67,7 +76,6 @@ export function WorkbenchProjectDetail({
   const [error, setError] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
-  const [draftStage, setDraftStage] = useState<ProjectStage>("opportunity");
   const [draftProductLine, setDraftProductLine] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
   const [saving, setSaving] = useState(false);
@@ -82,11 +90,13 @@ export function WorkbenchProjectDetail({
   const [fileCategory, setFileCategory] = useState<FileCategory | "all">("all");
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [documentSource, setDocumentSource] = useState(false);
 
   const load = async (): Promise<void> => {
     setError(undefined);
     try {
-      const next = await getProject(projectId);
+      const next = await getProject(projectId, customerId);
       setDetail(next);
       setMoveCustomer("");
     } catch (cause) {
@@ -104,15 +114,17 @@ export function WorkbenchProjectDetail({
     setFileQuery("");
     setFileCategory("all");
     setFileError(undefined);
+    setActiveTab("overview");
+    setDocumentSource(false);
     void load();
-  }, [projectId]);
+  }, [projectId, customerId]);
 
   const loadFiles = async (): Promise<void> => {
     if (listProjectFiles === undefined) return;
     setFileLoading(true);
     setFileError(undefined);
     try {
-      const request: ListProjectFilesRequest = { id: projectId };
+      const request: ListProjectFilesRequest = { id: projectId, customerId };
       if (fileQuery.trim() !== "") request.query = fileQuery.trim();
       if (fileCategory !== "all") request.category = fileCategory;
       const next = await listProjectFiles(request);
@@ -125,19 +137,18 @@ export function WorkbenchProjectDetail({
   };
 
   useEffect(() => {
-    if (detail === undefined || listProjectFiles === undefined) return;
+    if (activeTab !== "files" || detail === undefined || listProjectFiles === undefined) return;
     const handle = window.setTimeout(() => {
       void loadFiles();
     }, 150);
     return () => {
       window.clearTimeout(handle);
     };
-  }, [projectId, fileQuery, fileCategory, detail?.id]);
+  }, [projectId, customerId, fileQuery, fileCategory, detail?.id, activeTab]);
 
   const startEdit = (): void => {
     if (detail === undefined) return;
     setDraftTitle(detail.title);
-    setDraftStage(detail.stage);
     setDraftProductLine(detail.productLine ?? "");
     setDraftOwner(detail.owner ?? "");
     setSaveError(undefined);
@@ -151,8 +162,8 @@ export function WorkbenchProjectDetail({
     try {
       const request: UpdateProjectRequest = {
         id: detail.id,
+        customerId: detail.customerId,
         title: draftTitle.trim(),
-        stage: draftStage,
         ...(draftProductLine.trim() === "" ? {} : { productLine: draftProductLine.trim() }),
         ...(draftOwner.trim() === "" ? {} : { owner: draftOwner.trim() }),
       };
@@ -172,7 +183,7 @@ export function WorkbenchProjectDetail({
     setLifecycleBusy(true);
     setLifecycleError(undefined);
     try {
-      const next = await updateProject({ id: detail.id, archived: !detail.archived });
+      const next = await updateProject({ id: detail.id, customerId: detail.customerId, archived: !detail.archived });
       setDetail(next);
       onSaved?.();
     } catch (cause) {
@@ -189,7 +200,7 @@ export function WorkbenchProjectDetail({
     setLifecycleBusy(true);
     setLifecycleError(undefined);
     try {
-      const next = await moveProject({ id: detail.id, customerId: moveCustomer });
+      const next = await moveProject({ id: detail.id, sourceCustomerId: detail.customerId, customerId: moveCustomer });
       setDetail(next);
       setMoveCustomer("");
       onSaved?.();
@@ -205,7 +216,7 @@ export function WorkbenchProjectDetail({
     setLifecycleBusy(true);
     setLifecycleError(undefined);
     try {
-      await deleteProject(detail.id);
+      await deleteProject(detail.id, detail.customerId);
       setDeleteOpen(false);
       onSaved?.();
       onClose();
@@ -222,6 +233,7 @@ export function WorkbenchProjectDetail({
     : customers.filter((customer) => customer.id !== detail.customerId);
 
   const title = detail?.title ?? projectId;
+  const notSet = t("common.notSet");
 
   return (
     <Modal
@@ -229,7 +241,7 @@ export function WorkbenchProjectDetail({
       onClose={onClose}
       title={t("detail.title")}
       closeLabel={t("detail.close")}
-      className="wbDetailModal"
+      className={editing ? "wbDetailModal editing" : "wbDetailModal"}
       footer={editing
         ? (
           <>
@@ -254,149 +266,204 @@ export function WorkbenchProjectDetail({
         )}
         {detail !== undefined && !editing && (
           <div className="detailView">
-            <div className="detailHeader">
-              <div className="detailHeaderTitle">
-                <span className="detailTitleText">{title}</span>
-                {detail.archived && (
-                  <span className="detailArchivedBadge">{t("detail.archivedBadge")}</span>
-                )}
-              </div>
-              <div className="detailHeaderActions">
-                <Button
-                  variant="outline"
-                  onClick={() => { void openPath(detail.folderPath); }}
-                >
-                  {t("detail.openFolder")}
-                </Button>
-                <Button variant="primary" onClick={startEdit}>
-                  {t("detail.edit")}
-                </Button>
-              </div>
-            </div>
-            <div className="detailMeta">
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.customer")}</span>
-                <span className="detailValue">{detail.customerName}</span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.stage")}</span>
-                <span className="detailValue">
-                  {t(`stage.${detail.stage}`)}
-                </span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.productLine")}</span>
-                <span className="detailValue">
-                  {detail.productLine !== undefined && detail.productLine !== "" ? detail.productLine : "—"}
-                </span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.owner")}</span>
-                <span className="detailValue">
-                  {detail.owner !== undefined && detail.owner !== "" ? detail.owner : "—"}
-                </span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.date")}</span>
-                <span className="detailValue">{detail.date ?? "—"}</span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.startedAt")}</span>
-                <span className="detailValue">{detail.startedAt ?? "—"}</span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.dueAt")}</span>
-                <span className="detailValue">{detail.dueAt ?? "—"}</span>
-              </div>
-              <div className="detailRow">
-                <span className="detailLabel">{t("detail.tags")}</span>
-                <span className="detailValue">
-                  {detail.tags.length === 0 ? t("detail.noTags") : detail.tags.join("、")}
-                </span>
-              </div>
-            </div>
-            <div className="detailDocTitle">{t("detail.markdown")}</div>
-            {detail.projectMarkdown === ""
-              ? <div className="detailEmpty">{t("detail.noMarkdown")}</div>
-              : <pre className="detailMarkdown">{detail.projectMarkdown}</pre>}
-            {listProjectFiles !== undefined && (
-              <ProjectFilesSection
-                files={files}
-                query={fileQuery}
-                category={fileCategory}
-                loading={fileLoading}
-                error={fileError}
-                t={t}
-                onQueryChange={setFileQuery}
-                onCategoryChange={setFileCategory}
-                onOpenFile={(file) => { void openPath(`${detail.folderPath}/${file.relativePath}`); }}
-              />
-            )}
-            <div className="detailActions">
-              <div className="detailActionsTitle">{t("detail.move.title")}</div>
-              <div className="detailActionRow">
-                <span className="detailActionLabel">{t("detail.move")}</span>
-                <div className="detailActionBody">
-                  <select
-                    className="detailSelect detailMoveSelect"
-                    value={moveCustomer}
-                    disabled={lifecycleBusy}
-                    onChange={(event) => { setMoveCustomer(event.target.value); }}
-                  >
-                    {moveOptions.length === 0
-                      ? <option value="">—</option>
-                      : (
-                        <>
-                          <option value="">—</option>
-                          {moveOptions.map((customer) => (
-                            <option key={customer.id} value={customer.id}>{customer.name}</option>
-                          ))}
-                        </>
-                      )}
-                  </select>
+            <div className="detailSticky">
+              <div className="detailHeader">
+                <div className="detailHeaderTitle">
+                  <span className="detailTitleText">{title}</span>
+                  {detail.archived && (
+                    <span className="detailArchivedBadge">{t("detail.archivedBadge")}</span>
+                  )}
+                </div>
+                <div className="detailHeaderActions">
                   <Button
                     variant="outline"
-                    disabled={lifecycleBusy || moveOptions.length === 0 || moveCustomer === "" || moveCustomer === detail.customerId}
-                    onClick={() => { void onMove(); }}
+                    onClick={() => { void openPath(detail.folderPath); }}
                   >
-                    {t("detail.move.confirm")}
+                    {t("detail.openFolder")}
+                  </Button>
+                  <Button variant="primary" onClick={startEdit}>
+                    {t("detail.edit")}
                   </Button>
                 </div>
               </div>
-              <div className="detailActionRow">
-                <span className="detailActionLabel">
-                  {detail.archived ? t("detail.restore") : t("detail.archive")}
-                </span>
-                <div className="detailActionBody">
-                  <Button
-                    variant="outline"
-                    disabled={lifecycleBusy}
-                    onClick={() => { void onArchiveToggle(); }}
+
+              <div className="detailTabs" role="tablist" aria-label={t("detail.sections")}>
+                {DETAIL_TABS.map((tab, index) => (
+                  <button
+                    key={tab.value}
+                    id={`wb-detail-tab-${tab.value}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.value}
+                    aria-controls={`wb-detail-panel-${tab.value}`}
+                    tabIndex={activeTab === tab.value ? 0 : -1}
+                    className={activeTab === tab.value ? "detailTab active" : "detailTab"}
+                    onClick={() => { setActiveTab(tab.value); }}
+                    onKeyDown={(event) => {
+                      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                      event.preventDefault();
+                      const nextIndex = event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? DETAIL_TABS.length - 1
+                          : (index + (event.key === "ArrowRight" ? 1 : -1) + DETAIL_TABS.length) % DETAIL_TABS.length;
+                      const next = DETAIL_TABS[nextIndex];
+                      if (next === undefined) return;
+                      setActiveTab(next.value);
+                      const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role='tab']");
+                      tabs?.[nextIndex]?.focus();
+                    }}
                   >
-                    {detail.archived ? t("detail.restore") : t("detail.archive")}
-                  </Button>
-                </div>
+                    <span>{t(tab.label)}</span>
+                    {tab.value === "files" && files !== undefined && (
+                      <span className="detailTabCount">{files.files.length}</span>
+                    )}
+                  </button>
+                ))}
               </div>
-              <div className="detailActionRow">
-                <span className="detailActionLabel">{t("detail.delete")}</span>
-                <div className="detailActionBody">
+            </div>
+
+            {activeTab === "overview" && (
+              <div
+                id="wb-detail-panel-overview"
+                className="detailPanel"
+                role="tabpanel"
+                aria-labelledby="wb-detail-tab-overview"
+              >
+                <div className="detailMetaGrid">
+                  <DetailMetaItem label={t("detail.customer")} value={detail.customerName} />
+                  <DetailMetaItem label={t("detail.productLine")} value={detail.productLine || notSet} />
+                  <DetailMetaItem label={t("detail.owner")} value={detail.owner || notSet} />
+                  <DetailMetaItem label={t("detail.date")} value={detail.date ?? notSet} />
+                  <DetailMetaItem label={t("detail.startedAt")} value={detail.startedAt ?? notSet} />
+                  <DetailMetaItem label={t("detail.dueAt")} value={detail.dueAt ?? notSet} />
+                  <DetailMetaItem
+                    label={t("detail.tags")}
+                    value={detail.tags.length === 0 ? t("detail.noTags") : detail.tags.join("、")}
+                  />
+                </div>
+
+                <section className="detailManagement" aria-labelledby="wb-detail-management-title">
+                  <div className="detailSectionHeader">
+                    <h3 id="wb-detail-management-title" className="detailSectionTitle">{t("detail.move.title")}</h3>
+                  </div>
+                  <div className="detailActionRow">
+                    <div className="detailActionCopy">
+                      <span className="detailActionLabel">{t("detail.move")}</span>
+                      <span className="detailActionHint">{t("detail.moveHint")}</span>
+                    </div>
+                    <div className="detailActionBody">
+                      <select
+                        className="detailSelect detailMoveSelect"
+                        value={moveCustomer}
+                        aria-label={t("detail.move.customer")}
+                        disabled={lifecycleBusy}
+                        onChange={(event) => { setMoveCustomer(event.target.value); }}
+                      >
+                        <option value="">{t("common.notSelected")}</option>
+                        {moveOptions.map((customer) => (
+                          <option key={customer.id} value={customer.id}>{customer.name}</option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="outline"
+                        disabled={lifecycleBusy || moveOptions.length === 0 || moveCustomer === "" || moveCustomer === detail.customerId}
+                        onClick={() => { void onMove(); }}
+                      >
+                        {t("detail.move.confirm")}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="detailActionRow">
+                    <div className="detailActionCopy">
+                      <span className="detailActionLabel">
+                        {detail.archived ? t("detail.restore") : t("detail.archive")}
+                      </span>
+                      <span className="detailActionHint">{t("detail.archiveHint")}</span>
+                    </div>
+                    <div className="detailActionBody compact">
+                      <Button
+                        variant="outline"
+                        disabled={lifecycleBusy}
+                        onClick={() => { void onArchiveToggle(); }}
+                      >
+                        {detail.archived ? t("detail.restore") : t("detail.archive")}
+                      </Button>
+                    </div>
+                  </div>
+                  {lifecycleError !== undefined && <div className="detailError">{lifecycleError}</div>}
+                </section>
+
+                <section className="detailDanger" aria-labelledby="wb-detail-danger-title">
+                  <div className="detailActionCopy">
+                    <h3 id="wb-detail-danger-title" className="detailDangerTitle">{t("detail.danger")}</h3>
+                    <span className="detailActionHint">{t("detail.deleteHint")}</span>
+                  </div>
                   <Button
+                    className="detailDangerButton"
                     variant="outline"
                     disabled={lifecycleBusy}
                     onClick={() => { setDeleteOpen(true); }}
                   >
                     {t("detail.delete")}
                   </Button>
-                </div>
+                </section>
               </div>
-              {lifecycleError !== undefined && <div className="detailError">{lifecycleError}</div>}
-            </div>
+            )}
+
+            {activeTab === "document" && (
+              <div
+                id="wb-detail-panel-document"
+                className="detailPanel"
+                role="tabpanel"
+                aria-labelledby="wb-detail-tab-document"
+              >
+                <div className="detailDocumentHeader">
+                  <div className="detailDocTitle">{t("detail.markdown")}</div>
+                  {detail.projectMarkdown !== "" && (
+                    <button
+                      type="button"
+                      className="detailDocumentMode"
+                      onClick={() => { setDocumentSource(!documentSource); }}
+                    >
+                      {documentSource ? t("detail.documentPreview") : t("detail.documentSource")}
+                    </button>
+                  )}
+                </div>
+                {detail.projectMarkdown === ""
+                  ? <div className="detailEmpty">{t("detail.noMarkdown")}</div>
+                  : documentSource
+                    ? <pre className="detailMarkdown">{detail.projectMarkdown}</pre>
+                    : <ProjectMarkdownPreview markdown={detail.projectMarkdown} />}
+              </div>
+            )}
+
+            {activeTab === "files" && listProjectFiles !== undefined && (
+              <div
+                id="wb-detail-panel-files"
+                className="detailPanel"
+                role="tabpanel"
+                aria-labelledby="wb-detail-tab-files"
+              >
+                <ProjectFilesSection
+                  files={files}
+                  query={fileQuery}
+                  category={fileCategory}
+                  loading={fileLoading}
+                  error={fileError}
+                  t={t}
+                  onQueryChange={setFileQuery}
+                  onCategoryChange={setFileCategory}
+                  onOpenFile={(file) => { void openPath(`${detail.folderPath}/${file.relativePath}`); }}
+                />
+              </div>
+            )}
           </div>
         )}
         {detail !== undefined && editing && (
           <div className="detailEdit">
             <div className="detailField">
-              <label className="detailLabel" htmlFor="wb-detail-title">{t("detail.title")}</label>
+              <label className="detailLabel" htmlFor="wb-detail-title">{t("detail.projectName")}</label>
               <Input
                 id="wb-detail-title"
                 className="detailInput"
@@ -410,20 +477,6 @@ export function WorkbenchProjectDetail({
                   void onSave();
                 }}
               />
-            </div>
-            <div className="detailField">
-              <label className="detailLabel" htmlFor="wb-detail-stage">{t("detail.stage")}</label>
-              <select
-                id="wb-detail-stage"
-                className="detailSelect"
-                value={draftStage}
-                disabled={saving}
-                onChange={(event) => { setDraftStage(event.target.value as ProjectStage); }}
-              >
-                {PROJECT_STAGES.map((stage) => (
-                  <option key={stage} value={stage}>{t(`stage.${stage}`)}</option>
-                ))}
-              </select>
             </div>
             <div className="detailField">
               <label className="detailLabel" htmlFor="wb-detail-product">{t("detail.productLine")}</label>
@@ -468,6 +521,81 @@ export function WorkbenchProjectDetail({
       </div>
     </Modal>
   );
+}
+
+function DetailMetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="detailMetaItem">
+      <span className="detailMetaLabel">{label}</span>
+      <span className="detailMetaValue">{value}</span>
+    </div>
+  );
+}
+
+function ProjectMarkdownPreview({ markdown }: { markdown: string }) {
+  const body = parseFrontmatter(markdown).body.trim();
+  if (body === "") return null;
+
+  const blocks: ReactNode[] = [];
+  const lines = body.split(/\r?\n/);
+  let code: string[] | undefined;
+
+  const pushCode = (key: number): void => {
+    if (code === undefined) return;
+    blocks.push(<pre key={`code-${key}`} className="detailMarkdownCode">{code.join("\n")}</pre>);
+    code = undefined;
+  };
+
+  lines.forEach((line, index) => {
+    if (line.trim().startsWith("```")) {
+      if (code === undefined) code = [];
+      else pushCode(index);
+      return;
+    }
+    if (code !== undefined) {
+      code.push(line);
+      return;
+    }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading !== null) {
+      const level = heading[1]?.length ?? 1;
+      const text = heading[2] ?? "";
+      if (level === 1) blocks.push(<h2 key={index}>{text}</h2>);
+      else if (level === 2) blocks.push(<h3 key={index}>{text}</h3>);
+      else blocks.push(<h4 key={index}>{text}</h4>);
+      return;
+    }
+
+    const task = /^\s*-\s*\[([ xX])\]\s+(.+)$/.exec(line);
+    if (task !== null) {
+      const checked = task[1]?.toLowerCase() === "x";
+      blocks.push(
+        <div key={index} className="detailMarkdownTask">
+          <span className={checked ? "detailMarkdownCheck checked" : "detailMarkdownCheck"} aria-hidden="true">
+          </span>
+          <span>{task[2]}</span>
+        </div>,
+      );
+      return;
+    }
+
+    const listItem = /^\s*[-*]\s+(.+)$/.exec(line);
+    if (listItem !== null) {
+      blocks.push(<div key={index} className="detailMarkdownListItem"><span aria-hidden="true">•</span><span>{listItem[1]}</span></div>);
+      return;
+    }
+
+    if (line.trim() === "") {
+      blocks.push(<div key={index} className="detailMarkdownBreak" aria-hidden="true" />);
+      return;
+    }
+
+    blocks.push(<p key={index}>{line}</p>);
+  });
+  pushCode(lines.length);
+
+  return <div className="detailMarkdownPreview">{blocks}</div>;
 }
 
 function formatFileSize(sizeBytes: number): string {
@@ -518,11 +646,13 @@ function ProjectFilesSection({
           className="detailFilesSearch"
           value={query}
           placeholder={t("detail.filesSearch")}
+          aria-label={t("detail.filesSearch")}
           onChange={(event) => { onQueryChange(event.target.value); }}
         />
         <select
           className="detailFilesSelect"
           value={category}
+          aria-label={t("detail.filesFilter")}
           onChange={(event) => { onCategoryChange(event.target.value as FileCategory | "all"); }}
         >
           <option value="all">{t("detail.filesAll")}</option>
@@ -535,7 +665,13 @@ function ProjectFilesSection({
         </select>
       </div>
       {error !== undefined && <div className="detailFilesError">{error}</div>}
-      {loading && files === undefined && <div className="detailEmpty">{t("empty.loading")}</div>}
+      {loading && files === undefined && (
+        <div className="detailFilesSkeleton" aria-label={t("empty.loading")} role="status">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
       {!loading && files !== undefined && grouped.length === 0 && (
         <div className="detailEmpty">{t("detail.filesEmpty")}</div>
       )}
@@ -552,10 +688,14 @@ function ProjectFilesSection({
                 type="button"
                 className="detailFileRow"
                 title={file.relativePath}
+                aria-label={`${t("detail.filesOpen")}: ${file.name}`}
                 onClick={() => { onOpenFile(file); }}
               >
                 <span className="detailFileIcon">{fileCategoryGlyph(file.category)}</span>
-                <span className="detailFileName">{file.name}</span>
+                <span className="detailFileBody">
+                  <span className="detailFileName">{file.name}</span>
+                  <span className="detailFilePath">{file.relativePath}</span>
+                </span>
                 <span className="detailFileMeta">{formatFileSize(file.sizeBytes)}</span>
               </button>
             ))}

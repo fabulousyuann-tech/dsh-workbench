@@ -1,0 +1,332 @@
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .unmanagedSessions {
+  min-height: 0;
+  height: 100%;
+  padding-right: var(--dsh-sidebar-inline-padding);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .sidebarLibraryScroll > .unmanagedSessions {
+  height: auto;
+  padding-right: 0;
+  overflow: visible;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .sidebarLibraryScroll .unmanagedSessionsHeader {
+  padding-top: 8px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .headerNewSession + .unmanagedSessions {
+  padding-top: 49px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .unmanagedSessionsHeader,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionSectionTitle {
+  padding: 8px 8px 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .unmanagedSessionsEmpty {
+  padding: 18px 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .unmanagedSessionsEmpty.compact {
+  padding: 6px 8px 10px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectsHeading {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  margin-top: 6px;
+  padding: 4px 4px 4px 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectsHeading > span {
+  flex: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectAdd,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectExpand,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNew,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectAdd {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectAdd:hover,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectExpand:hover,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNew:hover,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRemove:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectGroup {
+  min-width: 0;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectExpand {
+  flex: none;
+  width: 26px;
+  height: 30px;
+  padding: 0;
+  border-radius: 7px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectExpand .chevron {
+  transform: rotate(-90deg);
+  transition: transform 120ms var(--ds-ease-in-out);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectExpand .chevron.open {
+  transform: rotate(0deg);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectMain {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px 0 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectMain > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectMain > small {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNew,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRemove {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-right: 3px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNew {
+  opacity: 0.72;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRemove {
+  opacity: 0;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow:hover .basicProjectNew,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNew:focus-visible {
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow:hover .basicProjectRemove,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRemove:focus-visible {
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectSessions .managedSessionList.compact {
+  margin-left: 26px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectNoChats {
+  padding: 4px 8px 8px 34px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectError {
+  margin: 0 6px 6px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: var(--dsw-alias-danger-bg-subtle, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-danger);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionList.compact {
+  margin: 0 0 4px 24px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow:hover,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow.current {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow.current {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionMain {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow.current .managedSessionMain {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionTime {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionStatus {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionStatus.running {
+  background: var(--dsw-alias-state-business-primary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionStatus.completed {
+  background: var(--dsw-alias-state-success-primary, #22a06b);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionArchive {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 3px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  opacity: 0;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow:hover .managedSessionArchive,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionArchive:focus-visible {
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionArchive:hover {
+  color: var(--dsw-alias-label-danger);
+  background: var(--dsw-alias-danger-bg-subtle, var(--dsw-alias-interactive-bg-hover));
+}
+
+/* 0.8 Codex-style task list density. */
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .unmanagedSessionsHeader,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionSectionTitle {
+  padding: 7px 6px 4px;
+  font-size: 11px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectsHeading {
+  min-height: 32px;
+  margin-top: 3px;
+  padding-left: 6px;
+  font-size: 11px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectMain {
+  min-height: 38px;
+  height: 38px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .basicProjectRow {
+  padding: 0 2px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionRow,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .managedSessionMain {
+  min-height: 30px;
+  height: 30px;
+}

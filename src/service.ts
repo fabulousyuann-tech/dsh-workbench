@@ -1,5 +1,5 @@
 import { mkdir, rename, stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 
 import type { Context } from "@deepseek-ai/cordis";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
@@ -14,7 +14,7 @@ import {
   scanWorkspace,
 } from "./catalog.ts";
 import {
-  expandHomePath,
+  resolveConfiguredPath,
   resolveDataDir,
   type Config,
 } from "./config.ts";
@@ -22,11 +22,14 @@ import { startWorkspaceWatch } from "./libraryWatch.ts";
 import { categorizeFiles, scanProjectFiles } from "./files.ts";
 import {
   loadOverlay,
+  overlayProjectKey,
   overlayPath,
-  pushRecentWorkspace,
+  projectOverlayOf,
   saveOverlay,
   withOverlayLock,
 } from "./overlay.ts";
+import { WorkbenchSpaceService } from "./spaces.ts";
+import { auxiliaryCapabilities } from "./auxiliary.ts";
 import type {
   BatchUpdateError,
   BatchUpdateRequest,
@@ -40,11 +43,14 @@ import type {
   DueReminderItem,
   DueRemindersRequest,
   DueRemindersResult,
+  HideWorkspacesRequest,
   IdRequest,
+  InspectWorkspacePathsRequest,
   ListProjectFilesRequest,
   ListProjectsRequest,
   ListProjectsResult,
   MoveProjectRequest,
+  ProjectIdRequest,
   ProjectDetail,
   ProjectFilesResult,
   ProjectFilter,
@@ -57,26 +63,73 @@ import type {
   WorkbenchStatistics,
   WireProjectFilter,
   WorkspaceListResult,
+  WorkspacePathStatusResult,
+  CreateSpaceRequest,
+  ListSpacesRequest,
+  ListSpacesResult,
+  RemoveSpaceRequest,
+  ReorderSpacesRequest,
+  ResolveSpaceRequest,
+  ResolveSpaceResult,
+  SetDefaultSpaceRequest,
+  SetSelectedSpaceRequest,
+  SpaceMigrationStatus,
+  UpdateSpacePolicyRequest,
+  UpdateSpaceRequest,
+  WorkbenchSpace,
+  SearchSpacesRequest,
+  SearchSpacesResult,
+  SpaceScopedRequest,
+  SpacePolicyResult,
+  AuxiliaryCapabilitiesResult,
 } from "./types.ts";
 import { PROJECT_STAGES } from "./types.ts";
 
 export const WORKBENCH_SERVICE = "workbench";
 
+function findProject(
+  projects: readonly ProjectSummary[],
+  id: string,
+  customerId?: string,
+): ProjectSummary | undefined {
+  const matches = projects.filter((project) => project.id === id
+    && (customerId === undefined || project.customerId === customerId));
+  if (matches.length > 1) {
+    throw new Error(`Project ID ${id} is ambiguous within this Space; provide customerId`);
+  }
+  return matches[0];
+}
+
 export class WorkbenchService extends TypertRemoteService {
   workspaceRoot: string;
-  readonly dataDir: string;
+  dataDir: string;
   cache: { workspaceRoot: string; items: Awaited<ReturnType<typeof scanWorkspace>> } | undefined;
   catalogRevision = 0;
   watchClose: (() => void) | undefined;
   watchedRoot: string | undefined;
+  spaces: WorkbenchSpaceService;
+  readonly appCtx: Context;
 
   constructor(ctx: Context, config: Config) {
     super(ctx, WORKBENCH_SERVICE);
-    this.workspaceRoot = resolveUserPath(config.workspaceRoot);
-    this.dataDir = resolveUserPath(resolveDataDir(config));
+    this.appCtx = ctx;
+    this.workspaceRoot = resolveConfiguredPath("workspaceRoot", config.workspaceRoot);
+    this.dataDir = resolveConfiguredPath("dataDir", resolveDataDir(config));
+    this.spaces = new WorkbenchSpaceService(this.dataDir, this.workspaceRoot);
     ctx.effect(() => async () => {
       this.stopWatch();
     }, "dsh-workbench: workspace watch");
+  }
+
+  updateConfig(config: Config): void {
+    const workspaceRoot = resolveConfiguredPath("workspaceRoot", config.workspaceRoot);
+    const dataDir = resolveConfiguredPath("dataDir", resolveDataDir(config));
+    if (workspaceRoot === this.workspaceRoot && dataDir === this.dataDir) return;
+    this.workspaceRoot = workspaceRoot;
+    this.dataDir = dataDir;
+    this.spaces = new WorkbenchSpaceService(this.dataDir, this.workspaceRoot);
+    this.stopWatch();
+    this.invalidateCatalog();
   }
 
   invalidateCatalog(): void {
@@ -103,18 +156,37 @@ export class WorkbenchService extends TypertRemoteService {
     }).close;
   }
 
-  async scanned() {
+  async scanned(spaceId?: string) {
     return withOverlayLock(this.dataDir, async () => {
-      const overlay = await loadOverlay(this.dataDir);
-      const workspaceRoot = overlay.workspaceRoot ?? this.workspaceRoot;
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      const resolvedSpaceId = spaceId ?? overlay.selectedSpaceId ?? overlay.defaultSpaceId;
+      const space = overlay.spaces[resolvedSpaceId];
+      if (space === undefined) throw new Error(`Space not found: ${resolvedSpaceId}`);
+      const workspaceRoot = space.rootPath;
       this.ensureWatch(workspaceRoot);
       if (this.cache?.workspaceRoot === workspaceRoot) {
-        return { overlay, workspaceRoot, items: this.cache.items };
+        return { overlay, space, spaceId: resolvedSpaceId, workspaceRoot, items: this.cache.items };
       }
-      const items = await scanWorkspace(workspaceRoot, overlay);
+      const items = await scanWorkspace(workspaceRoot, { ...overlay, projects: projectOverlayOf(overlay, resolvedSpaceId) });
       this.cache = { workspaceRoot, items };
-      return { overlay, workspaceRoot, items };
+      return { overlay, space, spaceId: resolvedSpaceId, workspaceRoot, items };
     });
+  }
+
+  /** Project IDs are only Space-local; an unscoped duplicate must never be guessed. */
+  async projectSpaceId(projectId: string, explicitSpaceId?: string, customerId?: string): Promise<string> {
+    if (explicitSpaceId !== undefined) return (await this.spaces.resolve(explicitSpaceId)).spaceId;
+    const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+    const matches: string[] = [];
+    for (const space of Object.values(overlay.spaces)) {
+      try {
+        const items = await scanWorkspace(space.rootPath, { ...overlay, projects: projectOverlayOf(overlay, space.id) });
+        if (items.projects.some((project) => project.id === projectId
+          && (customerId === undefined || project.customerId === customerId))) matches.push(space.id);
+      } catch { /* missing Spaces are not candidates */ }
+    }
+    if (matches.length > 1) throw new Error(`Project ID ${projectId} is ambiguous across Spaces (${matches.join(", ")}); provide spaceId`);
+    return matches[0] ?? overlay.selectedSpaceId ?? overlay.defaultSpaceId;
   }
 
   async getRevision(
@@ -126,13 +198,34 @@ export class WorkbenchService extends TypertRemoteService {
     return { revision: this.catalogRevision };
   }
 
+  /**
+   * DSH 的 Workspace 注册表不会因磁盘目录被外部删除而自动收敛。
+   * 这里只做只读路径探测；是否注销 Workspace 由客户端运行时负责。
+   */
+  async inspectWorkspacePaths(
+    request: InspectWorkspacePathsRequest,
+    signal: AbortSignal,
+  ): Promise<WorkspacePathStatusResult> {
+    signal.throwIfAborted();
+    const paths = [...new Set(request.paths)];
+    const statuses = await Promise.all(paths.map(async (path) => ({
+      path,
+      available: await stat(path).then((item) => item.isDirectory(), () => false),
+    })));
+    signal.throwIfAborted();
+    return {
+      availablePaths: statuses.filter((item) => item.available).map((item) => item.path),
+      missingPaths: statuses.filter((item) => !item.available).map((item) => item.path),
+    };
+  }
+
   async listProjects(
     request: ListProjectsRequest,
     signal: AbortSignal,
   ): Promise<ListProjectsResult> {
     signal.throwIfAborted();
     const filter = normalizeFilter(request.filter);
-    const { overlay, workspaceRoot, items } = await this.scanned();
+    const { overlay, space, spaceId, workspaceRoot, items } = await this.scanned(request.spaceId);
     const matches = (project: (typeof items.projects)[number]) =>
       matchesFilter(project, filter) && matchesQuery(project, request.query);
     const projects = items.projects.filter(matches);
@@ -141,17 +234,18 @@ export class WorkbenchService extends TypertRemoteService {
       .map((customer) => ({ ...customer, projects: customer.projects.filter(matches) }))
       .filter((customer) => showEmptyCustomers || customer.projects.length > 0);
     return {
-      settings: await this.settingsOf(workspaceRoot, overlay),
+      settings: await this.settingsOf(spaceId, workspaceRoot, space),
       customers,
       projects,
       revision: this.catalogRevision,
     };
   }
 
-  async getProject(request: IdRequest, signal: AbortSignal): Promise<ProjectDetail> {
+  async getProject(request: ProjectIdRequest, signal: AbortSignal): Promise<ProjectDetail> {
     signal.throwIfAborted();
-    const { items } = await this.scanned();
-    const project = items.projects.find((item) => item.id === request.id);
+    const spaceId = await this.projectSpaceId(request.id, request.spaceId, request.customerId);
+    const { items } = await this.scanned(spaceId);
+    const project = findProject(items.projects, request.id, request.customerId);
     if (project === undefined) throw new Error(`project not found: ${request.id}`);
     return {
       ...project,
@@ -165,8 +259,9 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<ProjectFilesResult> {
     signal.throwIfAborted();
-    const { items } = await this.scanned();
-    const project = items.projects.find((item) => item.id === request.id);
+    const spaceId = await this.projectSpaceId(request.id, request.spaceId, request.customerId);
+    const { items } = await this.scanned(spaceId);
+    const project = findProject(items.projects, request.id, request.customerId);
     if (project === undefined) throw new Error(`project not found: ${request.id}`);
     const all = await scanProjectFiles(project.folderPath);
     const query = request.query?.trim().toLowerCase();
@@ -185,8 +280,8 @@ export class WorkbenchService extends TypertRemoteService {
 
   async getSettings(_request: Record<string, never>, signal: AbortSignal): Promise<WorkbenchSettings> {
     signal.throwIfAborted();
-    const overlay = await loadOverlay(this.dataDir);
-    return this.settingsOf(overlay.workspaceRoot ?? this.workspaceRoot, overlay);
+    const { space, spaceId, workspaceRoot } = await this.scanned();
+    return this.settingsOf(spaceId, workspaceRoot, space);
   }
 
   /** 返回当前工作空间与最近使用过的工作空间列表。 */
@@ -195,10 +290,9 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<WorkspaceListResult> {
     signal.throwIfAborted();
-    const overlay = await loadOverlay(this.dataDir);
-    const current = overlay.workspaceRoot ?? this.workspaceRoot;
-    const recent = (overlay.recentWorkspaces ?? []).filter((path) => path !== current);
-    return { current, workspaces: recent };
+    const listed = await this.spaces.list();
+    const current = listed.spaces.find((space) => space.id === listed.selectedSpaceId)!.rootPath;
+    return { spaceId: listed.selectedSpaceId, current, workspaces: listed.spaces.filter((space) => space.id !== listed.selectedSpaceId).map((space) => space.rootPath) };
   }
 
   async setWorkspaceRoot(
@@ -207,20 +301,12 @@ export class WorkbenchService extends TypertRemoteService {
   ): Promise<WorkbenchSettings> {
     signal.throwIfAborted();
     const workspaceRoot = resolveUserPath(request.path);
-    return withOverlayLock(this.dataDir, async () => {
-      const overlay = await loadOverlay(this.dataDir);
-      const previous = overlay.workspaceRoot ?? this.workspaceRoot;
-      overlay.workspaceRoot = workspaceRoot;
-      overlay.recentWorkspaces = pushRecentWorkspace(
-        pushRecentWorkspace(overlay.recentWorkspaces ?? [], previous),
-        workspaceRoot,
-      );
-      await saveOverlay(this.dataDir, overlay);
-      this.workspaceRoot = workspaceRoot;
-      this.stopWatch();
-      this.invalidateCatalog();
-      return this.settingsOf(workspaceRoot, overlay);
-    });
+    const space = request.spaceId === undefined
+      ? await this.spaces.create({ rootPath: workspaceRoot })
+      : await this.spaces.update({ spaceId: request.spaceId, rootPath: workspaceRoot });
+    await this.spaces.setSelected(space.id);
+    this.stopWatch(); this.invalidateCatalog();
+    return this.settingsOf(space.id, space.rootPath, space);
   }
 
   async refreshCatalog(
@@ -231,12 +317,33 @@ export class WorkbenchService extends TypertRemoteService {
     return this.listProjects({ query: "", filter: "all" }, signal);
   }
 
+  /**
+   * 把一批已删除项目的目录路径加入持久隐藏列表：其 Workspace 从「会话」浏览区
+   * 隐藏，但会话与注册都原样保留（可见性收起，不销毁数据）。
+   */
+  async hideWorkspaces(
+    request: HideWorkspacesRequest,
+    signal: AbortSignal,
+  ): Promise<WorkbenchSettings> {
+    signal.throwIfAborted();
+    return withOverlayLock(this.dataDir, async () => {
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      const spaceId = request.spaceId ?? overlay.selectedSpaceId ?? overlay.defaultSpaceId;
+      const space = overlay.spaces[spaceId];
+      if (space === undefined) throw new Error(`Space not found: ${spaceId}`);
+      const next = [...new Set([...space.hiddenWorkspacePaths, ...request.paths])];
+      space.hiddenWorkspacePaths = next;
+      await saveOverlay(this.dataDir, overlay);
+      return this.settingsOf(spaceId, space.rootPath, space);
+    });
+  }
+
   async createProject(
     request: CreateProjectRequest,
     signal: AbortSignal,
   ): Promise<CreateProjectResult> {
     signal.throwIfAborted();
-    const { items } = await this.scanned();
+    const { items } = await this.scanned(request.spaceId);
     const customer = items.customers.find((item) => item.id === request.customerId);
     if (customer === undefined) {
       throw new Error(`customer not found: ${request.customerId}`);
@@ -257,7 +364,7 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<CreateCustomerResult> {
     signal.throwIfAborted();
-    const { workspaceRoot } = await this.scanned();
+    const { workspaceRoot } = await this.scanned(request.spaceId);
     const created = await createCustomerFolder(workspaceRoot, request.name);
     this.invalidateCatalog();
     return created;
@@ -269,10 +376,22 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<RenameCustomerResult> {
     signal.throwIfAborted();
-    const { items, workspaceRoot } = await this.scanned();
+    const { items, workspaceRoot, spaceId } = await this.scanned(request.spaceId);
     const customer = items.customers.find((item) => item.id === request.id);
     if (customer === undefined) throw new Error(`customer not found: ${request.id}`);
     const renamed = await renameCustomerFolder(workspaceRoot, request.id, request.name);
+    await withOverlayLock(this.dataDir, async () => {
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      for (const project of customer.projects) {
+        const oldKey = overlayProjectKey(spaceId, customer.id, project.id);
+        const nextKey = overlayProjectKey(spaceId, renamed.id, project.id);
+        if (overlay.projects[oldKey] !== undefined) {
+          overlay.projects[nextKey] = overlay.projects[oldKey];
+          delete overlay.projects[oldKey];
+        }
+      }
+      await saveOverlay(this.dataDir, overlay);
+    });
     this.invalidateCatalog();
     return renamed;
   }
@@ -282,9 +401,16 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<ProjectDetail> {
     signal.throwIfAborted();
+    const resolvedSpaceId = await this.projectSpaceId(request.id, request.spaceId, request.customerId);
+    const { items } = await this.scanned(resolvedSpaceId);
+    const project = findProject(items.projects, request.id, request.customerId);
+    if (project === undefined) throw new Error(`project not found: ${request.id}`);
     await withOverlayLock(this.dataDir, async () => {
-      const overlay = await loadOverlay(this.dataDir);
-      const current = overlay.projects[request.id] ?? {};
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      const spaceId = resolvedSpaceId;
+      const key = overlayProjectKey(spaceId, project.customerId, request.id);
+      const legacyKey = overlayProjectKey(spaceId, request.id);
+      const current = overlay.projects[key] ?? overlay.projects[legacyKey] ?? {};
       const next = { ...current };
       if (request.title !== undefined) {
         if (request.title === "") delete next.title;
@@ -303,11 +429,14 @@ export class WorkbenchService extends TypertRemoteService {
         if (request.archived) next.archived = true;
         else delete next.archived;
       }
-      overlay.projects[request.id] = next;
+      overlay.projects[key] = next;
+      if (items.projects.filter((item) => item.id === request.id).length === 1) {
+        delete overlay.projects[legacyKey];
+      }
       await saveOverlay(this.dataDir, overlay);
       this.invalidateCatalog();
     });
-    return this.getProject({ id: request.id }, signal);
+    return this.getProject({ id: request.id, customerId: project.customerId, spaceId: resolvedSpaceId }, signal);
   }
 
   /** 把项目文件夹移动到另一个客户目录下（ID/文件夹名不变）。 */
@@ -316,35 +445,63 @@ export class WorkbenchService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<ProjectDetail> {
     signal.throwIfAborted();
-    const { items } = await this.scanned();
-    const project = items.projects.find((item) => item.id === request.id);
+    const resolvedSpaceId = await this.projectSpaceId(request.id, request.spaceId, request.sourceCustomerId);
+    const { items } = await this.scanned(resolvedSpaceId);
+    const project = findProject(items.projects, request.id, request.sourceCustomerId);
     if (project === undefined) throw new Error(`project not found: ${request.id}`);
     const target = items.customers.find((item) => item.id === request.customerId);
     if (target === undefined) throw new Error(`customer not found: ${request.customerId}`);
     if (project.customerId === target.id) {
-      return this.getProject({ id: request.id }, signal);
+      return this.getProject({ id: request.id, customerId: project.customerId, spaceId: resolvedSpaceId }, signal);
     }
     const targetPath = join(target.folderPath, project.id);
     const exists = await stat(targetPath).then(() => true, () => false);
     if (exists) throw new Error(`target already exists: ${targetPath}`);
     await rename(project.folderPath, targetPath);
+    await withOverlayLock(this.dataDir, async () => {
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      const sourceKey = overlayProjectKey(resolvedSpaceId, project.customerId, project.id);
+      const targetKey = overlayProjectKey(resolvedSpaceId, target.id, project.id);
+      const legacyKey = overlayProjectKey(resolvedSpaceId, project.id);
+      const metadata = overlay.projects[sourceKey] ?? overlay.projects[legacyKey];
+      if (metadata !== undefined) overlay.projects[targetKey] = metadata;
+      delete overlay.projects[sourceKey];
+      if (items.projects.filter((item) => item.id === request.id).length === 1) delete overlay.projects[legacyKey];
+      await saveOverlay(this.dataDir, overlay);
+    });
     this.invalidateCatalog();
-    return this.getProject({ id: request.id }, signal);
+    return this.getProject({ id: request.id, customerId: target.id, spaceId: resolvedSpaceId }, signal);
   }
 
   /** 把项目文件夹移入回收站 <workspaceRoot>/.trash/<customer>/<id>，并清掉 overlay 记录。 */
-  async deleteProject(request: IdRequest, signal: AbortSignal): Promise<DeleteProjectResult> {
+  async deleteProject(request: ProjectIdRequest, signal: AbortSignal): Promise<DeleteProjectResult> {
     signal.throwIfAborted();
-    const { items, workspaceRoot } = await this.scanned();
-    const project = items.projects.find((item) => item.id === request.id);
+    const resolvedSpaceId = await this.projectSpaceId(request.id, request.spaceId, request.customerId);
+    const { items, workspaceRoot, spaceId } = await this.scanned(resolvedSpaceId);
+    const project = findProject(items.projects, request.id, request.customerId);
     if (project === undefined) throw new Error(`project not found: ${request.id}`);
     const trashRoot = join(workspaceRoot, ".trash", project.customerId);
     await mkdir(trashRoot, { recursive: true });
-    const targetPath = join(trashRoot, project.id);
+    let targetPath = join(trashRoot, project.id);
+    if (await stat(targetPath).then(() => true, () => false)) {
+      let suffix = 2;
+      while (await stat(targetPath).then(() => true, () => false)) {
+        targetPath = join(trashRoot, `${project.id}-${suffix}`);
+        suffix += 1;
+      }
+    }
     await rename(project.folderPath, targetPath);
     await withOverlayLock(this.dataDir, async () => {
-      const overlay = await loadOverlay(this.dataDir);
-      delete overlay.projects[project.id];
+      const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+      delete overlay.projects[overlayProjectKey(spaceId, project.customerId, project.id)];
+      if (items.projects.filter((item) => item.id === project.id).length === 1) {
+        delete overlay.projects[overlayProjectKey(spaceId, project.id)];
+      }
+      // 可见性收起：把项目目录加入隐藏列表，其 Workspace 从「会话」浏览区隐藏，
+      // 会话与注册原样保留，便于将来从回收站恢复后历史完整回来。
+      const space = overlay.spaces[spaceId];
+      if (space === undefined) throw new Error(`Space not found: ${spaceId}`);
+      space.hiddenWorkspacePaths = [...new Set([...space.hiddenWorkspacePaths, project.folderPath])];
       await saveOverlay(this.dataDir, overlay);
     });
     this.invalidateCatalog();
@@ -357,7 +514,7 @@ export class WorkbenchService extends TypertRemoteService {
    */
   async deleteCustomer(request: IdRequest, signal: AbortSignal): Promise<DeleteCustomerResult> {
     signal.throwIfAborted();
-    const { items, workspaceRoot } = await this.scanned();
+    const { items, workspaceRoot, spaceId } = await this.scanned(request.spaceId);
     const customer = items.customers.find((item) => item.id === request.id);
     if (customer === undefined) throw new Error(`customer not found: ${request.id}`);
 
@@ -374,12 +531,24 @@ export class WorkbenchService extends TypertRemoteService {
     await mkdir(join(workspaceRoot, ".trash"), { recursive: true });
     await rename(customer.folderPath, targetPath);
 
-    // 清理 overlay 中该客户所有项目的记录。
+    // 清理 overlay 中该客户所有项目的记录，并把各项目目录加入隐藏列表（可见性收起）。
     const projectIds = customer.projects.map((project) => project.id);
     if (projectIds.length > 0) {
       await withOverlayLock(this.dataDir, async () => {
-        const overlay = await loadOverlay(this.dataDir);
-        for (const id of projectIds) delete overlay.projects[id];
+        const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+        for (const project of customer.projects) {
+          delete overlay.projects[overlayProjectKey(spaceId, customer.id, project.id)];
+          if (items.projects.filter((item) => item.id === project.id).length === 1) {
+            delete overlay.projects[overlayProjectKey(spaceId, project.id)];
+          }
+        }
+        const space = overlay.spaces[spaceId];
+        if (space === undefined) throw new Error(`Space not found: ${spaceId}`);
+        const hidden = [...new Set([
+          ...space.hiddenWorkspacePaths,
+          ...customer.projects.map((project) => project.folderPath),
+        ])];
+        space.hiddenWorkspacePaths = hidden;
         await saveOverlay(this.dataDir, overlay);
       });
     }
@@ -389,11 +558,11 @@ export class WorkbenchService extends TypertRemoteService {
 
   /** 工作台统计快照（含归档项目），供统计工具与仪表盘使用。 */
   async statistics(
-    _request: Record<string, never>,
+    request: SpaceScopedRequest,
     signal: AbortSignal,
   ): Promise<WorkbenchStatistics> {
     signal.throwIfAborted();
-    const { workspaceRoot, items } = await this.scanned();
+    const { workspaceRoot, spaceId, items } = await this.scanned(request.spaceId);
     const projects = items.projects;
     const byStage = Object.fromEntries(
       PROJECT_STAGES.map((stage) => [stage, 0]),
@@ -436,6 +605,7 @@ export class WorkbenchService extends TypertRemoteService {
     }
     return {
       workspaceRoot,
+      spaceId,
       totalProjects: projects.length,
       activeProjects: projects.length - archivedProjects,
       archivedProjects,
@@ -457,7 +627,7 @@ export class WorkbenchService extends TypertRemoteService {
   /** 到期提醒：列出已过期与近期到期的项目（未归档未完结）。 */
   async dueReminders(request: DueRemindersRequest, signal: AbortSignal): Promise<DueRemindersResult> {
     signal.throwIfAborted();
-    const { workspaceRoot, items } = await this.scanned();
+    const { workspaceRoot, spaceId, items } = await this.scanned(request.spaceId);
     const horizonDays = Math.max(0, Math.floor(request.days ?? DUE_SOON_DAYS));
     const customer = request.customer?.trim().toLowerCase();
     const today = startOfDay(new Date());
@@ -491,7 +661,7 @@ export class WorkbenchService extends TypertRemoteService {
     }
     overdue.sort((left, right) => left.daysLeft - right.daysLeft);
     dueSoon.sort((left, right) => left.daysLeft - right.daysLeft);
-    return { workspaceRoot, horizonDays, overdue, dueSoon };
+    return { spaceId, workspaceRoot, horizonDays, overdue, dueSoon };
   }
 
   /** 批量更新项目：可同时改阶段/负责人/产品线/归档状态，并可整体移动所属客户。 */
@@ -499,12 +669,18 @@ export class WorkbenchService extends TypertRemoteService {
     signal.throwIfAborted();
     const ids = [...new Set(request.ids.map((id) => id.trim()).filter((id) => id !== ""))];
     if (ids.length === 0) return { updated: 0, failed: 0, errors: [] };
-    const { items } = await this.scanned();
+    const { items } = await this.scanned(request.spaceId);
     const errors: BatchUpdateError[] = [];
     const failedIds = new Set<string>();
     const resolved = new Map<string, ProjectSummary>();
     for (const id of ids) {
-      const project = items.projects.find((item) => item.id === id);
+      const matches = items.projects.filter((item) => item.id === id);
+      if (matches.length > 1) {
+        errors.push({ id, error: `project ID is ambiguous within this Space: ${id}` });
+        failedIds.add(id);
+        continue;
+      }
+      const project = matches[0];
       if (project === undefined) {
         errors.push({ id, error: `project not found: ${id}` });
         failedIds.add(id);
@@ -542,9 +718,15 @@ export class WorkbenchService extends TypertRemoteService {
       || request.archived !== undefined;
     if (metaIds.length > 0 && hasMeta) {
       await withOverlayLock(this.dataDir, async () => {
-        const overlay = await loadOverlay(this.dataDir);
+        const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+        const spaceId = request.spaceId ?? overlay.selectedSpaceId ?? overlay.defaultSpaceId;
         for (const id of metaIds) {
-          const current = overlay.projects[id] ?? {};
+          const project = resolved.get(id)!;
+          const customerId = request.customerId ?? project.customerId;
+          const key = overlayProjectKey(spaceId, customerId, id);
+          const sourceKey = overlayProjectKey(spaceId, project.customerId, id);
+          const legacyKey = overlayProjectKey(spaceId, id);
+          const current = overlay.projects[sourceKey] ?? overlay.projects[legacyKey] ?? {};
           const next = { ...current };
           if (request.stage !== undefined) next.stage = request.stage;
           if (request.owner !== undefined) {
@@ -559,7 +741,9 @@ export class WorkbenchService extends TypertRemoteService {
             if (request.archived) next.archived = true;
             else delete next.archived;
           }
-          overlay.projects[id] = next;
+          overlay.projects[key] = next;
+          if (sourceKey !== key) delete overlay.projects[sourceKey];
+          delete overlay.projects[legacyKey];
         }
         await saveOverlay(this.dataDir, overlay);
       });
@@ -570,21 +754,110 @@ export class WorkbenchService extends TypertRemoteService {
     return { updated: ids.length - failedIds.size, failed: errors.length, errors };
   }
 
+  async listSpaces(request: ListSpacesRequest, signal: AbortSignal): Promise<ListSpacesResult> {
+    signal.throwIfAborted();
+    return this.spaces.list(request.selectedSpaceId);
+  }
+
+  async createSpace(request: CreateSpaceRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted();
+    const created = await this.spaces.create(request);
+    this.stopWatch(); this.invalidateCatalog();
+    return created;
+  }
+
+  async updateSpace(request: UpdateSpaceRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted();
+    const updated = await this.spaces.update(request);
+    this.stopWatch(); this.invalidateCatalog();
+    return updated;
+  }
+
+  async removeSpace(request: RemoveSpaceRequest, signal: AbortSignal): Promise<{ removedSpaceId: string; defaultSpaceId: string }> {
+    signal.throwIfAborted();
+    const removed = await this.spaces.remove(request.spaceId);
+    this.stopWatch(); this.invalidateCatalog();
+    return removed;
+  }
+
+  async reorderSpaces(request: ReorderSpacesRequest, signal: AbortSignal): Promise<WorkbenchSpace[]> {
+    signal.throwIfAborted(); return this.spaces.reorder(request.spaceIds);
+  }
+
+  async setDefaultSpace(request: SetDefaultSpaceRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted(); return this.spaces.setDefault(request.spaceId);
+  }
+
+  async setSelectedSpace(request: SetSelectedSpaceRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted();
+    const selected = await this.spaces.setSelected(request.spaceId);
+    this.stopWatch(); this.invalidateCatalog(); return selected;
+  }
+
+  async updateSpacePolicy(request: UpdateSpacePolicyRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted(); return this.spaces.updatePolicy(request);
+  }
+
+  async getSpace(request: SetDefaultSpaceRequest, signal: AbortSignal): Promise<WorkbenchSpace> {
+    signal.throwIfAborted();
+    const store = await this.spaces.store(); const space = store.spaces[request.spaceId];
+    if (space === undefined) throw new Error(`Space not found: ${request.spaceId}`);
+    return space;
+  }
+
+  async getSpacePolicy(request: SetDefaultSpaceRequest, signal: AbortSignal): Promise<SpacePolicyResult> {
+    const space = await this.getSpace(request, signal); return { spaceId: space.id, policy: space.policy };
+  }
+
+  async resolveSpace(request: ResolveSpaceRequest, signal: AbortSignal): Promise<ResolveSpaceResult> {
+    signal.throwIfAborted(); return this.spaces.resolve(request.spaceId, request.selectedSpaceId);
+  }
+
+  async getMigrationStatus(_request: Record<string, never>, signal: AbortSignal): Promise<SpaceMigrationStatus> {
+    signal.throwIfAborted(); return this.spaces.migrationStatus();
+  }
+
+  async searchSpaces(request: SearchSpacesRequest, signal: AbortSignal): Promise<SearchSpacesResult> {
+    signal.throwIfAborted();
+    const overlay = await loadOverlay(this.dataDir, this.workspaceRoot);
+    const query = request.query.trim();
+    const projects: SearchSpacesResult["projects"] = [];
+    const overview: SearchSpacesResult["overview"] = [];
+    for (const space of Object.values(overlay.spaces).sort((a, b) => a.order - b.order)) {
+      signal.throwIfAborted();
+      try {
+        const items = await scanWorkspace(space.rootPath, { ...overlay, projects: projectOverlayOf(overlay, space.id) });
+        overview.push({ spaceId: space.id, name: space.name, customers: items.customers.length, projects: items.projects.length, pathStatus: "available" });
+        for (const project of items.projects) if (query === "" || matchesQuery(project, query)) projects.push({ ...project, spaceId: space.id, spaceName: space.name });
+      } catch {
+        overview.push({ spaceId: space.id, name: space.name, customers: 0, projects: 0, pathStatus: "missing" });
+      }
+    }
+    return { query, projects, overview };
+  }
+
+  async getAuxiliaryCapabilities(_request: Record<string, never>, signal: AbortSignal): Promise<AuxiliaryCapabilitiesResult> {
+    signal.throwIfAborted(); return auxiliaryCapabilities(this.appCtx);
+  }
+
   async settingsOf(
+    spaceId: string,
     workspaceRoot: string,
-    overlay: { workspaceRoot?: string; rules?: string },
+    space: { rules?: string; hiddenWorkspacePaths: string[] },
   ): Promise<WorkbenchSettings> {
     return {
+      spaceId,
       workspaceRoot,
-      ...(overlay.rules === undefined || overlay.rules === "" ? {} : { rules: overlay.rules }),
+      ...(space.rules === undefined || space.rules === "" ? {} : { rules: space.rules }),
+      ...(space.hiddenWorkspacePaths.length === 0
+        ? {}
+        : { hiddenWorkspaces: space.hiddenWorkspacePaths }),
     };
   }
 }
 
 function resolveUserPath(path: string): string {
-  const expanded = expandHomePath(path);
-  if (!isAbsolute(expanded)) throw new Error(`path must be absolute: ${path}`);
-  return expanded;
+  return resolveConfiguredPath("workspaceRoot", path);
 }
 
 /** 旧版客户端的 legacy 过滤值（active/done/archived）统一按 "all" 处理。 */

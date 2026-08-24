@@ -71,7 +71,7 @@ export function WorkbenchDashboard({
         onClick={() => { setOpen(!open); }}
       >
         <span className="dashboardTitle">{t("dashboard.title")}</span>
-        {stats !== undefined && (
+        {stats !== undefined && stats.overdueProjects > 0 && (
           <span className="dashboardBadge">
             {t("dashboard.stat.overdue")} {stats.overdueProjects}
           </span>

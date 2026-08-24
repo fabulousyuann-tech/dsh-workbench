@@ -1,11 +1,12 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import Schema from "@deepseek-ai/schemastery";
 
 export interface Config {
   workspaceRoot: string;
   dataDir: string;
+  sidebarTitle?: string;
 }
 
 export function defaultWorkspaceRoot(platform: NodeJS.Platform = process.platform): string {
@@ -34,10 +35,24 @@ export function expandHomePath(path: string, home = homedir()): string {
 }
 
 export const Config: Schema<Config> = Schema.object({
-  workspaceRoot: Schema.string().default(defaultWorkspaceRoot()),
-  dataDir: Schema.string().default(defaultDataDir()),
+  workspaceRoot: Schema.string().min(1).default(defaultWorkspaceRoot()),
+  dataDir: Schema.string().min(1).default(defaultDataDir()),
+  sidebarTitle: Schema.string().min(1).default("DSH"),
 });
 
 export function resolveDataDir(config: Config): string {
   return config.dataDir === "" ? defaultDataDir() : config.dataDir;
+}
+
+export function resolveConfiguredPath(field: keyof Config, value: string): string {
+  const expanded = expandHomePath(value);
+  if (!isAbsolute(expanded)) {
+    throw new TypeError(`dsh-workbench: ${field} must be an absolute path or start with ~`);
+  }
+  return expanded;
+}
+
+export function validateConfig(config: Config): void {
+  resolveConfiguredPath("workspaceRoot", config.workspaceRoot);
+  resolveConfiguredPath("dataDir", resolveDataDir(config));
 }

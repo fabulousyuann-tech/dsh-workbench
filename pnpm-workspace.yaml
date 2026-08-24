@@ -1,0 +1,16 @@
+packages:
+  - .
+
+# Installs are performed explicitly before checks. Avoid pnpm 11 recursively
+# reinstalling this large host matrix before every nested `pnpm run` command.
+verifyDepsBeforeRun: false
+
+# This workspace compiles plugins against DSH but does not launch the bundled
+# DSH runtime. Native/runtime postinstall scripts are therefore intentionally
+# skipped here; the standalone DSH installation owns those binaries.
+allowBuilds:
+  "@deepseek-ai/dsh-subprocess-local": false
+  "@google/genai": false
+  koffi: false
+  node-pty: false
+  protobufjs: false

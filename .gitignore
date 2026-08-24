@@ -1,3 +1,12 @@
 node_modules
 lib
 .DS_Store
+.pnpm-store
+artifacts
+plugins
+design-qa.md
+docs/DSH-CLEAN-REINSTALL.md
+docs/WORKSPACE-WORKBENCH-DEVELOPMENT-CHECKLIST.md
+docs/WORKSPACE-WORKBENCH-HANDOFF.md
+*.tgz
+*.sha256

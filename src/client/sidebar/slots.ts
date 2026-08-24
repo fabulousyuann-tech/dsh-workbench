@@ -1,6 +1,7 @@
-import type { WorkspaceId } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionId, WorkspaceId } from "@deepseek-ai/dsh-client-runtime/client";
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
+import type { SessionPolicyOverride } from "../../policy.ts";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface SlotMap {
@@ -30,18 +31,25 @@ export interface SidebarFooterActionOwnerProps {
 }
 
 export interface WorkbenchSidebarInjected {
-  startSession: (workspaceId?: WorkspaceId) => void;
+  /** Create an ordinary chat in the preferred user-managed Workspace. */
+  startSession: () => Promise<void>;
+  startSpaceSession: (spaceId: string, override?: SessionPolicyOverride) => Promise<void>;
   /**
    * Enter (or create) the session bound to a project folder: registers the
    * folder as a Workspace when needed, then connects and opens its blank
    * session.
    */
-  openProjectSession: (folderPath: string) => void;
+  openProjectSession: (folderPath: string) => Promise<void>;
+  /** Always start a fresh chat inside an already registered basic Workspace. */
+  startProjectSession: (workspaceId: WorkspaceId) => Promise<void>;
+  openSession: (sessionId: SessionId) => void;
+  archiveSession: (sessionId: SessionId) => Promise<void>;
+  removeBasicProject: (workspaceId: WorkspaceId) => Promise<void>;
   toggleSidebar: () => void;
 }
 
 export type WorkbenchSidebarSlotProps =
   & PropsRuntime<"sidebar">
-  & PropsRenderSlots<"sidebar.workspaces" | "sidebar.settings" | "sidebar.footer.action">
+  & PropsRenderSlots<"sidebar.settings" | "sidebar.footer.action">
   & WorkbenchSidebarInjected
   & PropsLocale<"dsh.workbench">;

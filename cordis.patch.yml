@@ -1,3 +1,6 @@
+# Workbench owns the complete sidebar surface, so disable the stock owner before
+# inserting this bundle's replacement. The stock Workspace UI remains mounted
+# and is rendered through Workbench's sidebar slot bridge.
 - id: ui-sidebar
   disabled: true
 - insert:

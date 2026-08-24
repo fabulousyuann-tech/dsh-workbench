@@ -121,6 +121,10 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+[data-plugin="dsh-workbench"][data-surface="settings-card"] .pathInput {
+  margin-top: 6px;
+}
+
 [data-plugin="dsh-workbench"][data-surface="settings-card"] .footer {
   display: flex;
   align-items: center;

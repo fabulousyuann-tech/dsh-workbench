@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { Button, IconChevronDownOutline14 } from "@deepseek-ai/dsh-client-ui-primitives";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import { Button, IconChevronDownOutline14, Input } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { InjectFace, PropsLocale, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 
+import type { Config } from "../config.ts";
 import type { WorkbenchViewFace } from "./face.ts";
 import type { WorkbenchKey } from "./locales.ts";
 import "./WorkbenchSettingsCard.css";
@@ -11,7 +13,9 @@ export type WorkbenchSettingsCardProps =
   & PropsRuntime<"settings.plugin.item">
   & PropsLocale<"dsh.workbench">
   & InjectFace<
-    Pick<WorkbenchViewFace, "ready" | "getSettings" | "setWorkspaceRoot" | "pickDirectory">
+    Pick<WorkbenchViewFace, "ready" | "getSettings" | "setWorkspaceRoot" | "pickDirectory"> & {
+      hostSettings: Pick<SettingsScope<Config>, "getSnapshot" | "subscribe" | "set" | "unset">;
+    }
   >;
 
 export function WorkbenchSettingsCard({
@@ -20,11 +24,17 @@ export function WorkbenchSettingsCard({
   getSettings,
   setWorkspaceRoot,
   pickDirectory,
+  hostSettings,
 }: WorkbenchSettingsCardProps) {
   const [open, setOpen] = useState(false);
   const [savedRoot, setSavedRoot] = useState("");
   const [draftRoot, setDraftRoot] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [rootLoaded, setRootLoaded] = useState(false);
+  const [savedDataDir, setSavedDataDir] = useState("");
+  const [draftDataDir, setDraftDataDir] = useState("");
+  const [savedSidebarTitle, setSavedSidebarTitle] = useState("DSH");
+  const [draftSidebarTitle, setDraftSidebarTitle] = useState("DSH");
+  const [hostLoaded, setHostLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -36,16 +46,35 @@ export function WorkbenchSettingsCard({
       if (cancelled) return;
       setSavedRoot(settings.workspaceRoot);
       setDraftRoot(settings.workspaceRoot);
-      setLoaded(true);
+      setRootLoaded(true);
     }, () => {
-      if (!cancelled) setLoaded(true);
+      if (!cancelled) setRootLoaded(true);
     });
     return () => {
       cancelled = true;
     };
   }, [ready, getSettings]);
 
-  const dirty = draftRoot !== savedRoot;
+  const hostSnapshot = useSyncExternalStore(
+    (listener) => hostSettings.subscribe(listener),
+    () => hostSettings.getSnapshot(),
+  );
+  const resolvedDataDir = hostSnapshot.value?.dataDir;
+  const resolvedSidebarTitle = hostSnapshot.value?.sidebarTitle ?? "DSH";
+  useEffect(() => {
+    if (hostSnapshot.status !== "ready" || resolvedDataDir === undefined) return;
+    setSavedDataDir(resolvedDataDir);
+    setDraftDataDir((current) => !hostLoaded || current === savedDataDir ? resolvedDataDir : current);
+    setHostLoaded(true);
+    setSavedSidebarTitle(resolvedSidebarTitle);
+    setDraftSidebarTitle((current) => !hostLoaded || current === savedSidebarTitle ? resolvedSidebarTitle : current);
+  }, [hostLoaded, hostSnapshot.status, resolvedDataDir, resolvedSidebarTitle, savedDataDir, savedSidebarTitle]);
+
+  const rootDirty = draftRoot !== savedRoot;
+  const dataDirDirty = draftDataDir !== savedDataDir;
+  const sidebarTitleDirty = draftSidebarTitle !== savedSidebarTitle;
+  const dirty = rootDirty || dataDirDirty || sidebarTitleDirty;
+  const loaded = rootLoaded && hostLoaded;
   const title = t("settings.title" as WorkbenchKey);
 
   const onPick = async () => {
@@ -58,13 +87,30 @@ export function WorkbenchSettingsCard({
 
   const onSave = async () => {
     if (!dirty || saving) return;
-    if (draftRoot === "") return;
+    if (draftRoot === "" || draftDataDir.trim() === "" || draftSidebarTitle.trim() === "") return;
     setSaving(true);
     setFailed(false);
     setSaved(false);
     try {
-      await setWorkspaceRoot(draftRoot);
-      setSavedRoot(draftRoot);
+      if (rootDirty) {
+        await setWorkspaceRoot(draftRoot);
+        setSavedRoot(draftRoot);
+      }
+      if (dataDirDirty) {
+        const nextDataDir = draftDataDir.trim();
+        await hostSettings.set("dataDir", nextDataDir);
+        if (hostSettings.getSnapshot().value?.dataDir !== nextDataDir) {
+          throw new Error("dataDir settings write was rejected");
+        }
+        setSavedDataDir(nextDataDir);
+        setDraftDataDir(nextDataDir);
+      }
+      if (sidebarTitleDirty) {
+        const nextSidebarTitle = draftSidebarTitle.trim();
+        await hostSettings.set("sidebarTitle", nextSidebarTitle);
+        setSavedSidebarTitle(nextSidebarTitle);
+        setDraftSidebarTitle(nextSidebarTitle);
+      }
       setSaved(true);
     } catch {
       setFailed(true);
@@ -103,6 +149,35 @@ export function WorkbenchSettingsCard({
               </Button>
             </span>
           </label>
+          <label className="field" htmlFor="dsh-workbench-data-dir">
+            <span className="fieldLabel">{t("settings.dataDir" as WorkbenchKey)}</span>
+            <span className="fieldHint">{t("settings.dataDirHint" as WorkbenchKey)}</span>
+            <Input
+              id="dsh-workbench-data-dir"
+              className="pathInput"
+              value={draftDataDir}
+              disabled={!hostLoaded || saving || !hostSnapshot.writable}
+              onChange={(event) => {
+                setDraftDataDir(event.target.value);
+                setSaved(false);
+                setFailed(false);
+              }}
+            />
+          </label>
+          <label className="field" htmlFor="dsh-workbench-sidebar-title">
+            <span className="fieldLabel">{t("settings.sidebarTitle" as WorkbenchKey)}</span>
+            <span className="fieldHint">{t("settings.sidebarTitleHint" as WorkbenchKey)}</span>
+            <Input
+              id="dsh-workbench-sidebar-title"
+              value={draftSidebarTitle}
+              disabled={!hostLoaded || saving || !hostSnapshot.writable}
+              onChange={(event) => {
+                setDraftSidebarTitle(event.target.value);
+                setSaved(false);
+                setFailed(false);
+              }}
+            />
+          </label>
           <div className="footer">
             {failed && <p className="failed" role="status">{t("settings.saveFailed" as WorkbenchKey)}</p>}
             {saved && !dirty && <p className="ok" role="status">{t("settings.saved" as WorkbenchKey)}</p>}
@@ -113,6 +188,8 @@ export function WorkbenchSettingsCard({
               disabled={!dirty || saving || !loaded}
               onClick={() => {
                 setDraftRoot(savedRoot);
+                setDraftDataDir(savedDataDir);
+                setDraftSidebarTitle(savedSidebarTitle);
                 setFailed(false);
                 setSaved(false);
               }}
@@ -123,7 +200,7 @@ export function WorkbenchSettingsCard({
               type="button"
               size="sm"
               variant="primary"
-              disabled={!dirty || saving || draftRoot === "" || !loaded}
+              disabled={!dirty || saving || draftRoot === "" || draftDataDir.trim() === "" || draftSidebarTitle.trim() === "" || !loaded}
               onClick={() => { void onSave(); }}
             >
               {t((saving ? "settings.saving" : "settings.save") as WorkbenchKey)}
