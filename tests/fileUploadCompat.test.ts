@@ -1,27 +1,50 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const clientUrl = new URL(
-  "../plugins/dsh-file-upload-yuan/lib/client.js",
-  import.meta.url,
-);
-const uploadUrl = new URL(
-  "../plugins/dsh-file-upload-yuan/lib/upload.js",
-  import.meta.url,
-);
+import {
+  dragCarriesFiles,
+  shouldBridgeFileDragTarget,
+} from "../src/client/fileDropBridge.js";
 
-describe("dsh-file-upload local compatibility build", () => {
-  it("notifies the attachment dock after successful uploads", async () => {
-    const client = await readFile(clientUrl, "utf8");
-    expect(client).toContain("function notifyUploadMetaChanged()");
-    expect(client).toContain("subscribeUploadMeta(() =>");
-    expect(client).toContain("listener(uploadError)");
+function dragEventWithTypes(types: string[]): Pick<DragEvent, "dataTransfer"> {
+  return { dataTransfer: { types } as unknown as DataTransfer };
+}
+
+function closestTarget(options: {
+  insidePanel: boolean;
+  ownedBySidebar?: boolean;
+}): EventTarget {
+  return {
+    closest(selector: string): Element | null {
+      if (selector === "[data-dsh-panel-host]") {
+        return options.insidePanel ? ({} as Element) : null;
+      }
+      return options.ownedBySidebar ? ({} as Element) : null;
+    },
+  } as unknown as EventTarget;
+}
+
+describe("file upload compatibility bridge", () => {
+  it("relays only drags that contain files", () => {
+    expect(dragCarriesFiles(dragEventWithTypes(["Files"]))).toBe(true);
+    expect(dragCarriesFiles(dragEventWithTypes(["text/plain"]))).toBe(false);
+    expect(dragCarriesFiles({ dataTransfer: null })).toBe(false);
   });
 
-  it("round-trips Unicode attachment paths through HTTP headers", async () => {
-    const client = await readFile(clientUrl, "utf8");
-    const upload = await readFile(uploadUrl, "utf8");
-    expect(client).toContain('\"x-file-path\": encodeURIComponent(ref)');
-    expect(upload).toContain("filePath = decodeURIComponent(filePath)");
+  it("leaves sidebar-owned and outside-panel drop targets untouched", () => {
+    expect(
+      shouldBridgeFileDragTarget(
+        closestTarget({ insidePanel: true, ownedBySidebar: false }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldBridgeFileDragTarget(
+        closestTarget({ insidePanel: true, ownedBySidebar: true }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldBridgeFileDragTarget(
+        closestTarget({ insidePanel: false, ownedBySidebar: false }),
+      ),
+    ).toBe(false);
   });
 });
