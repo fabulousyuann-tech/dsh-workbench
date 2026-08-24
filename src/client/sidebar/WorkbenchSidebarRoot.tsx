@@ -39,6 +39,7 @@ export function WorkbenchSidebarRoot({
   startSession,
   openProjectSession,
   startProjectSession,
+  moveSessionToProject,
   openSession,
   archiveSession,
   removeBasicProject,
@@ -162,6 +163,7 @@ export function WorkbenchSidebarRoot({
               archiveSession={archiveSession}
               openProjectSession={openProjectSession}
               startProjectSession={startProjectSession}
+              moveSessionToProject={moveSessionToProject}
               pickDirectory={workbenchFace.pickDirectory}
               removeBasicProject={removeBasicProject}
             />

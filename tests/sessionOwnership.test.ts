@@ -76,6 +76,12 @@ describe("会话归属", () => {
     expect(result.projects[0]?.sessions.map((row) => row.id)).toEqual([sid("plain")]);
   });
 
+  it("没有 Workspace 记账的会话保留在未归类兜底区", () => {
+    const result = deriveBasicSessionPartition(sessions(), [], [], ["/work"]);
+    expect(result.loose.map((row) => row.id)).toEqual([sid("plain")]);
+    expect(result.projects).toEqual([]);
+  });
+
   it("工作台会话按最长目录匹配归入客户或项目，其余留在工作台根", () => {
     const workspaces = [
       workspace("root", "/work", ["root"]),

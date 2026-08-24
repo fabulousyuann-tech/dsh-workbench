@@ -33,6 +33,7 @@ export function UnmanagedSessionsPanel({
   archiveSession,
   openProjectSession,
   startProjectSession,
+  moveSessionToProject,
   pickDirectory,
   removeBasicProject,
 }: {
@@ -45,6 +46,7 @@ export function UnmanagedSessionsPanel({
   archiveSession: (sessionId: SessionId) => Promise<void>;
   openProjectSession: (folderPath: string) => Promise<void>;
   startProjectSession: (workspaceId: WorkspaceId) => Promise<void>;
+  moveSessionToProject: (sessionId: SessionId, workspaceId: WorkspaceId) => Promise<void>;
   pickDirectory: () => Promise<string | null>;
   removeBasicProject: (workspaceId: WorkspaceId) => Promise<void>;
 }) {
@@ -67,6 +69,8 @@ export function UnmanagedSessionsPanel({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [unclassifiedExpanded, setUnclassifiedExpanded] = useState(false);
+  const unclassifiedOpen = unclassifiedExpanded || normalizedQuery !== "";
 
   const addProject = async (): Promise<void> => {
     const path = await pickDirectory();
@@ -83,20 +87,36 @@ export function UnmanagedSessionsPanel({
 
   return (
     <section className="unmanagedSessions" aria-label={t("tab.sessions")}>
-      <div className="unmanagedSessionsHeader">{t("sessions.recent")}</div>
-      {sessions.phase === "pending" || workspaces.phase === "pending" ? (
-        <div className="unmanagedSessionsEmpty">{t("sessions.loading")}</div>
-      ) : visibleLoose.length === 0 ? (
-        <div className="unmanagedSessionsEmpty compact">{t("sessions.empty")}</div>
-      ) : (
-        <SessionList
-          sessions={visibleLoose}
-          t={t}
-          openSession={openSession}
-          archiveSession={archiveSession}
-        />
+      {visibleLoose.length > 0 && (
+        <div className="unclassifiedSessions">
+          <button
+            type="button"
+            className="unmanagedSessionsHeader unclassifiedToggle"
+            aria-expanded={unclassifiedOpen}
+            onClick={() => { setUnclassifiedExpanded(!unclassifiedExpanded); }}
+          >
+            <IconChevronDownOutline14 className={unclassifiedOpen ? "chevron open" : "chevron"} />
+            <span>{t("sessions.unclassified")}</span>
+            <small>{visibleLoose.length}</small>
+          </button>
+          {unclassifiedOpen && (
+            <SessionList
+              sessions={visibleLoose}
+              t={t}
+              openSession={openSession}
+              archiveSession={archiveSession}
+              moveTargets={partition.projects}
+              moveSession={async (sessionId, workspaceId) => {
+                setError(undefined);
+                await moveSessionToProject(sessionId, workspaceId);
+              }}
+              onMoveError={(message) => { setError(`${t("sessions.moveFailed")}: ${message}`); }}
+            />
+          )}
+        </div>
       )}
 
+      {error !== undefined && <div className="basicProjectError" role="alert">{error}</div>}
       <div className="basicProjectsHeading">
         <span>{t("sessions.projects")}</span>
         <Tooltip label={t("sessions.project.add")} delayMs={400}>
@@ -111,7 +131,6 @@ export function UnmanagedSessionsPanel({
           </button>
         </Tooltip>
       </div>
-      {error !== undefined && <div className="basicProjectError" role="alert">{error}</div>}
       {visibleProjects.length === 0 ? (
         <div className="unmanagedSessionsEmpty compact">{t("sessions.projects.empty")}</div>
       ) : visibleProjects.map((project) => (

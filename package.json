@@ -1,6 +1,6 @@
 {
   "name": "dsh-workbench",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "AI-assisted local project management workbench for DeepSeek Harness",
   "license": "MIT",

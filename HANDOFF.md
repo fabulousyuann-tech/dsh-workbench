@@ -2,12 +2,12 @@
 
 ## Current release candidate
 
-- Public version: `0.1.2`
+- Public version: `0.1.3`
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
 - Release tarball SHA-256: use the `.tgz.sha256` asset generated beside each GitHub Release (the compressed archive digest is build-specific)
-- Built client SHA-256: `1e18ffa3db65bfadb2714b6e5803fae11ece79b1a8c7287a8f3cf2b793d24c5e`
+- Built client SHA-256: `28b28502c4df9ec605afedb6d315dbfe46f1fa92a27947bcbee3840b437fa696`
 
 ## Architecture boundaries
 
@@ -15,6 +15,12 @@
 - Ordinary Sessions/Workspaces and Workbench-owned Sessions are mutually exclusive in the sidebar.
 - Workbench owns only its overlay and customer/project directory operations. DSH remains the source of truth for Sessions and Workspace registrations.
 - Removing a Space never deletes its root directory. Customer/project deletion moves directories to `.trash`; session deletion uses DSH archive semantics.
+
+## 0.1.3 public release changes
+
+- The empty Recent Chats placeholder is removed. Unowned DSH Sessions appear only when present, under a collapsed “Unclassified chats” recovery section with a count.
+- Search matches expand the recovery section automatically; ordinary project and Workbench ownership rules remain mutually exclusive.
+- Each unclassified Session can be moved into an existing ordinary project through the public `ctx.workspaces.insertSessionBefore(...)` API. This updates DSH's durable Workspace membership without moving files or rewriting Session logs.
 
 ## 0.1.2 public release changes
 
@@ -39,14 +45,14 @@
 
 ## Verification completed before tagging
 
-1. `pnpm check`: typecheck, 74 tests and all three bundles pass, including the generic footer overlay and settings-trailing slot contracts.
+1. `pnpm check`: typecheck, 75 tests and all three bundles pass, including unclassified-session ownership and move-action contracts.
 2. `pnpm audit --prod`: no known vulnerabilities.
 3. Tarball inspection: no local paths, user data, credentials, sibling plugin source or source maps.
 4. Fresh isolated install, `--dump-config`, server startup and served-client checksum pass.
 5. Migration from the previous internal build to the public `0.1.0` runtime passes in isolation.
-6. A fresh isolated DSH profile loaded the exact public `0.1.2` client. Browser QA verified zero-width empty state, expanded Settings-trailing alignment, and collapsed stacking above Settings.
+6. A fresh isolated DSH profile installed the exact `0.1.3` tarball, loaded the Host/client bundles, returned the web shell, and matched the built client checksum. Browser QA verified that an empty unclassified section consumes zero space and reported no console errors or warnings.
 
-Remaining release action: verify, commit and tag `v0.1.2`; GitHub Actions will create the `.tgz` and checksum release files.
+Remaining release action: commit and tag `v0.1.3`; GitHub Actions will create the `.tgz` and checksum release files. Local release tarball SHA-256: `730f0fcc8e5e7784ebf9790bb80f781b61fd9cf42b51e19b802e1d19963a12d8`.
 
 ## Working tree policy
 

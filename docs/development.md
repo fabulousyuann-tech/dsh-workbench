@@ -116,7 +116,7 @@ credentials 或用户数据。
 
 ```bash
 export DSH_HOME="$(mktemp -d)/dsh-home"
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.2.tgz
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.3.tgz
 dsh --profile web --dump-config
 dsh --profile web --port 3469 --no-open
 ```

@@ -2,12 +2,13 @@
 
 面向 DeepSeek Harness（DSH）的本地多工作台插件。它以“工作台 → 客户 → 项目 → 会话”组织目录，同时保留独立的普通会话与普通项目；同一条会话只显示在一个归属层级。
 
-当前公开版本：`0.1.2`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
+当前公开版本：`0.1.3`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
 
 ## 主要能力
 
 - Codex 式单列侧边栏：普通会话、普通项目和多个工作台共享一套紧凑导航。
 - 工作台、客户、项目、会话严格互斥归属，点击对应会话即可进入主聊天区。
+- 没有 Workspace 归属的历史会话仅在确有内容时显示为“未归类会话”，并可直接移入现有普通项目。
 - 工作台根目录可在设置中重新关联；历史会话继续按旧路径映射，不改写 DSH 日志。
 - 客户与项目的创建、重命名、移动、归档和安全删除；删除内容进入工作台内的 `.trash`。
 - 项目文件按 Word、Excel、PPT、PDF、图片等类型归集和搜索。
@@ -25,11 +26,11 @@ Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏�
 
 > npm 上的同名 `dsh-workbench` 属于其他项目。不要执行 `dsh plugin ... add dsh-workbench`，以免安装错误的软件包。
 
-从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.2.tgz` 和对应 `.sha256`，校验后安装本地文件：
+从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.3.tgz` 和对应 `.sha256`，校验后安装本地文件：
 
 ```bash
-shasum -a 256 -c dsh-workbench-0.1.2.tgz.sha256
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.2.tgz
+shasum -a 256 -c dsh-workbench-0.1.3.tgz.sha256
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.3.tgz
 dsh --profile web --dump-config
 dsh --profile web
 ```
@@ -76,6 +77,7 @@ dueAt: 2026-12-31
 ## 使用要点
 
 - 顶部“新建会话”创建普通会话；普通 DSH Workspace 显示在“项目”分区。
+- 没有项目归属的遗留会话会进入默认折叠的“未归类会话”；鼠标移到会话行，点击文件夹图标即可选择目标项目。该操作只更新 DSH 会话归属，不移动日志或磁盘文件。
 - 工作台默认收起。展开后按客户、项目和其下会话显示，历史会话不会重复出现在普通会话。
 - 点击客户或项目名称进入对应目录会话；展开箭头只控制列表。
 - 工作台设置可更改名称、颜色、图标、顺序、默认项、模型策略和根目录路径。

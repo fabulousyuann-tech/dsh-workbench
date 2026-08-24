@@ -286,6 +286,11 @@ describe("UI contract", () => {
     expect(root).toContain("managedRootPaths={managedRootPaths}");
     expect(root).toContain("removeBasicProject={removeBasicProject}");
     expect(root).toContain("startProjectSession={startProjectSession}");
+    expect(root).toContain("moveSessionToProject={moveSessionToProject}");
+    expect(basicPanel).toContain("visibleLoose.length > 0");
+    expect(basicPanel).toContain('t("sessions.unclassified")');
+    expect(basicPanel).toContain("moveTargets={partition.projects}");
+    expect(basicPanel).not.toContain('t("sessions.empty")');
     expect(basicPanel).toContain('className="basicProjectNew"');
     expect(basicPanel).toContain('t("sessions.project.newChat")');
     expect(root).toContain("pickDirectory={workbenchFace.pickDirectory}");
@@ -313,6 +318,7 @@ describe("UI contract", () => {
     expect(client).toContain("await startDefaultOrdinarySession(true)");
     expect(client).toContain("ctx.workspaces.startSession(workspace.workspaceId)");
     expect(client).toContain("startProjectSession: async (workspaceId)");
+    expect(client).toContain("await ctx.workspaces.insertSessionBefore(workspaceId, sessionId)");
     expect(client).not.toContain("ctx.workspaces.createDirectory(");
     expect(host).not.toContain("CASUAL_CHAT_DIRECTORY");
     expect(host).not.toContain(".dsh-casual-chats");

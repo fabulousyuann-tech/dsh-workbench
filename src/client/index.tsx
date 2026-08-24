@@ -457,6 +457,9 @@ export function apply(ctx: ClientContext): void {
     startProjectSession: async (workspaceId) => {
       startRegisteredWorkspaceSession(workspaceId);
     },
+    moveSessionToProject: async (sessionId, workspaceId) => {
+      await ctx.workspaces.insertSessionBefore(workspaceId, sessionId);
+    },
     openSession: (sessionId) => {
       (ctx.sessions as unknown as ISessions).open(sessionId);
     },

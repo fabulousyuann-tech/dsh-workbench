@@ -52,6 +52,8 @@ export interface WorkbenchSidebarInjected {
   openProjectSession: (folderPath: string) => Promise<void>;
   /** Always start a fresh chat inside an already registered basic Workspace. */
   startProjectSession: (workspaceId: WorkspaceId) => Promise<void>;
+  /** Move an unclassified Session into an existing basic Workspace. */
+  moveSessionToProject: (sessionId: SessionId, workspaceId: WorkspaceId) => Promise<void>;
   openSession: (sessionId: SessionId) => void;
   archiveSession: (sessionId: SessionId) => Promise<void>;
   removeBasicProject: (workspaceId: WorkspaceId) => Promise<void>;
