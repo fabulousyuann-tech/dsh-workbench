@@ -2,12 +2,12 @@
 
 ## Current release candidate
 
-- Public version: `0.1.0`
+- Public version: `0.1.1`
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
-- Release tarball SHA-256: `84a70e7fc00999e9270bca4dd7695334b6ae14345353d457f36d37078d426771`
-- Built client SHA-256: `5bdb64f9c6929012ff4ec4c35b76d137128741a5a7271350cc57d6f5d64c58d4`
+- Release tarball SHA-256: `2d7048c50b6d9b4409556b4f564573bd43815652848a27a5d31c1416973e86db`
+- Built client SHA-256: `29d68299f48ef098530fc618874f4424d70db3c7d476462344ec3480d0aa0f21`
 
 ## Architecture boundaries
 
@@ -15,6 +15,11 @@
 - Ordinary Sessions/Workspaces and Workbench-owned Sessions are mutually exclusive in the sidebar.
 - Workbench owns only its overlay and customer/project directory operations. DSH remains the source of truth for Sessions and Workspace registrations.
 - Removing a Space never deletes its root directory. Customer/project deletion moves directories to `.trash`; session deletion uses DSH archive semantics.
+
+## 0.1.1 public release changes
+
+- The shared `sidebar.footer.action` host no longer scrolls or clips its descendants. Footer plugins keep natural flow height while popovers can overlay the independently scrolling library region.
+- The compatibility fix is generic in expanded and collapsed modes; it contains no selectors for a specific billing plugin.
 
 ## 0.1.0 public release changes
 
@@ -28,14 +33,14 @@
 
 ## Verification completed before tagging
 
-1. `pnpm check`: typecheck, 73 tests and all three bundles pass.
+1. `pnpm check`: typecheck, 73 tests and all three bundles pass, including the generic footer overlay regression contract.
 2. `pnpm audit --prod`: no known vulnerabilities.
 3. Tarball inspection: no local paths, user data, credentials, sibling plugin source or source maps.
 4. Fresh isolated install, `--dump-config`, server startup and served-client checksum pass.
 5. Migration from the previous internal build to the public `0.1.0` runtime passes in isolation.
-6. The internal real-profile build passed UI smoke; relocated historical session ownership and search hierarchy remain correct, with no console errors or warnings. The exact public `0.1.0` package is verified in a fresh isolated profile.
+6. The internal real-profile build passed UI smoke; relocated historical session ownership and search hierarchy remain correct, with no console errors or warnings. The exact public `0.1.1` package and the usage-billing hover overlay are verified before tagging.
 
-Remaining release action: commit the prepared tree and tag `v0.1.0`; GitHub Actions will create the `.tgz` and checksum release files.
+Remaining release action: verify, commit and tag `v0.1.1`; GitHub Actions will create the `.tgz` and checksum release files.
 
 ## Working tree policy
 

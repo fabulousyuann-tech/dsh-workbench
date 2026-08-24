@@ -328,10 +328,13 @@
 }
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .footArea {
+  position: relative;
+  z-index: 2;
   flex: none;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 }
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsArea,
@@ -348,10 +351,7 @@
   grid-auto-flow: row;
   align-items: stretch;
   gap: 2px;
-  max-height: min(36vh, 288px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 /*
@@ -362,7 +362,10 @@
 /*
  * Do not size direct children here. A list entry may render a Fragment whose
  * later siblings are fixed-position dialogs or alerts; the grid owns only the
- * normal-flow row layout and leaves those overlay surfaces untouched.
+ * normal-flow row layout and leaves those overlay surfaces untouched. The
+ * slot itself must never scroll or clip: footer plugins commonly position
+ * popovers above their trigger. The library region remains the sole scroll
+ * owner and yields the footer's natural content height.
  */
 
 @media (max-width: 959px) {
@@ -389,11 +392,8 @@
   grid-auto-rows: max-content;
   justify-content: center;
   width: 36px;
-  max-height: calc(100vh - 164px);
   padding-right: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: auto;
+  overflow: visible;
 }
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"].collapsed .settingsArea {

@@ -179,7 +179,7 @@ describe("UI contract", () => {
     expect(railCss).toContain(".spaceContext.library");
   });
 
-  it("侧栏底部按 DSH list 插槽纵向承载多个插件并保留折叠态入口", async () => {
+  it("侧栏底部按 DSH list 插槽纵向承载插件并允许通用浮层越界显示", async () => {
     const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
     const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
     expect(root).toContain('renderSlot("sidebar.footer.action", { wide })');
@@ -187,11 +187,22 @@ describe("UI contract", () => {
       .toBeLessThan(root.indexOf('renderSlot("sidebar.settings", { wide })'));
     expect(rootCss).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(rootCss).toContain("grid-auto-rows: max-content");
-    expect(rootCss).toContain("max-height: min(36vh, 288px)");
-    expect(rootCss).toContain("overscroll-behavior: contain");
+    expect(rootCss).toContain("The library region remains the sole scroll");
+    expect(rootCss).toContain("slot itself must never scroll or clip");
+    expect(rootCss).not.toContain("max-height: min(36vh, 288px)");
+    expect(rootCss).not.toContain("max-height: calc(100vh - 164px)");
+    expect(rootCss).not.toContain("overscroll-behavior: contain");
     expect(rootCss).not.toContain(".footerActions:has(");
     expect(rootCss).not.toContain(".footerActions > *");
-    expect(rootCss).toContain("max-height: calc(100vh - 164px)");
+    const footerCss = rootCss.slice(
+      rootCss.indexOf('[data-plugin="dsh-workbench"][data-surface="sidebar"] .footArea'),
+      rootCss.indexOf("@media (prefers-reduced-motion: reduce)"),
+    );
+    expect(footerCss).toContain("position: relative");
+    expect(footerCss).toContain("z-index: 2");
+    expect(footerCss).toContain("overflow: visible");
+    expect(footerCss).not.toContain("overflow-y: auto");
+    expect(footerCss).not.toContain("overflow-x: hidden");
     expect(rootCss).not.toContain(".collapsed .regionArea {\n  display: none");
     expect(rootCss).not.toContain(".collapsed .footArea {\n  display:none");
     expect(rootCss).not.toContain(".collapsed .footerActions {\n  display: none");

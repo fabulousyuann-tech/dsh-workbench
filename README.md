@@ -2,7 +2,7 @@
 
 面向 DeepSeek Harness（DSH）的本地多工作台插件。它以“工作台 → 客户 → 项目 → 会话”组织目录，同时保留独立的普通会话与普通项目；同一条会话只显示在一个归属层级。
 
-当前公开版本：`0.1.0`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
+当前公开版本：`0.1.1`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
 
 ## 主要能力
 
@@ -24,11 +24,11 @@ Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏�
 
 > npm 上的同名 `dsh-workbench` 属于其他项目。不要执行 `dsh plugin ... add dsh-workbench`，以免安装错误的软件包。
 
-从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.0.tgz` 和对应 `.sha256`，校验后安装本地文件：
+从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.1.tgz` 和对应 `.sha256`，校验后安装本地文件：
 
 ```bash
-shasum -a 256 -c dsh-workbench-0.1.0.tgz.sha256
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.0.tgz
+shasum -a 256 -c dsh-workbench-0.1.1.tgz.sha256
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.1.tgz
 dsh --profile web --dump-config
 dsh --profile web
 ```
