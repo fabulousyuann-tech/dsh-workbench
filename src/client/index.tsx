@@ -588,6 +588,7 @@ export function apply(ctx: ClientContext): void {
       priority: -2,
       children: {
         "sidebar.settings": { kind: "single", scope: "root" },
+        "sidebar.settings.trailing": { kind: "list", scope: "root" },
         "sidebar.footer.action": { kind: "list", scope: "root" },
       },
       inject: injectSidebar,

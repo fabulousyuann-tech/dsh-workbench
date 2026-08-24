@@ -192,7 +192,10 @@ export function WorkbenchSidebarRoot({
 
       <div className="footArea">
         <div className="footerActions">{renderSlot("sidebar.footer.action", { wide })}</div>
-        <div className="settingsArea">{renderSlot("sidebar.settings", { wide })}</div>
+        <div className="settingsRow">
+          <div className="settingsArea">{renderSlot("sidebar.settings", { wide })}</div>
+          <div className="settingsTrailing">{renderSlot("sidebar.settings.trailing", { wide })}</div>
+        </div>
       </div>
     </div>
   );

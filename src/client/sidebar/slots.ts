@@ -7,6 +7,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface SlotMap {
     "sidebar.workspaces": { kind: "single"; scope: "root"; owner: SidebarSectionOwnerProps };
     "sidebar.settings": { kind: "single"; scope: "root"; owner: SidebarSettingsOwnerProps };
+    "sidebar.settings.trailing": { kind: "list"; scope: "root"; owner: SidebarSettingsTrailingOwnerProps };
     "sidebar.footer.action": { kind: "list"; scope: "root"; owner: SidebarFooterActionOwnerProps };
   }
 }
@@ -23,6 +24,15 @@ export interface SidebarSectionOwnerProps {
 }
 
 export interface SidebarSettingsOwnerProps {
+  wide: boolean;
+}
+
+/**
+ * Compact utility actions displayed beside the DSH Settings entry. Consumers
+ * should render an icon-sized control and keep destructive or disruptive
+ * operations behind an explicit confirmation step.
+ */
+export interface SidebarSettingsTrailingOwnerProps {
   wide: boolean;
 }
 
@@ -50,6 +60,6 @@ export interface WorkbenchSidebarInjected {
 
 export type WorkbenchSidebarSlotProps =
   & PropsRuntime<"sidebar">
-  & PropsRenderSlots<"sidebar.settings" | "sidebar.footer.action">
+  & PropsRenderSlots<"sidebar.settings" | "sidebar.settings.trailing" | "sidebar.footer.action">
   & WorkbenchSidebarInjected
   & PropsLocale<"dsh.workbench">;

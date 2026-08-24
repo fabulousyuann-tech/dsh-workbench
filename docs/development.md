@@ -51,7 +51,7 @@ src/
 
 ## 测试
 
-测试位于 `tests/workbench.test.ts`、`tests/spaces.test.ts`、`tests/policy.test.ts`、`tests/sessionOwnership.test.ts` 与 `tests/fileUploadCompat.test.ts`。当前 73 项覆盖
+测试位于 `tests/workbench.test.ts`、`tests/spaces.test.ts`、`tests/policy.test.ts`、`tests/sessionOwnership.test.ts` 与 `tests/fileUploadCompat.test.ts`。当前 74 项覆盖
 frontmatter/catalog、overlay v1→v2 备份迁移与恢复、Space CRUD/路径规范化/歧义保护、策略优先级、
 route 缺失、辅助插件存在/不存在、UI 键盘/响应式契约，以及原有统计/提醒/批量/文件能力：
 
@@ -83,6 +83,16 @@ Harness 核心包（`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-api-remotes` �
 完整矩阵与 API 结论见
 [ADR 0001](./adr/0001-dsh-integration-boundaries.md)。
 
+## Sidebar 扩展插槽
+
+Workbench 替代官方 Sidebar 时继续承载 DSH 的公开子插槽，并额外提供一个可选列表插槽：
+
+| 插槽 | owner props | 布局 |
+| --- | --- | --- |
+| `sidebar.settings.trailing` | `{ wide: boolean }` | 展开时位于“设置”右侧；折叠时位于“设置”上方 |
+
+该插槽适合重启、状态检查等紧凑图标操作。消费者应继续保留不依赖 Workbench 的主入口，且对中断性操作提供显式确认。不要通过 DOM 查询、绝对定位或修改 Workbench 样式插入按钮；不存在该插槽时应静默跳过快捷入口。
+
 修改依赖后务必执行：
 
 ```bash
@@ -106,7 +116,7 @@ credentials 或用户数据。
 
 ```bash
 export DSH_HOME="$(mktemp -d)/dsh-home"
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.1.tgz
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.2.tgz
 dsh --profile web --dump-config
 dsh --profile web --port 3469 --no-open
 ```

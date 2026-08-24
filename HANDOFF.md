@@ -2,12 +2,12 @@
 
 ## Current release candidate
 
-- Public version: `0.1.1`
+- Public version: `0.1.2`
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
 - Release tarball SHA-256: use the `.tgz.sha256` asset generated beside each GitHub Release (the compressed archive digest is build-specific)
-- Built client SHA-256: `29d68299f48ef098530fc618874f4424d70db3c7d476462344ec3480d0aa0f21`
+- Built client SHA-256: `1e18ffa3db65bfadb2714b6e5803fae11ece79b1a8c7287a8f3cf2b793d24c5e`
 
 ## Architecture boundaries
 
@@ -15,6 +15,12 @@
 - Ordinary Sessions/Workspaces and Workbench-owned Sessions are mutually exclusive in the sidebar.
 - Workbench owns only its overlay and customer/project directory operations. DSH remains the source of truth for Sessions and Workspace registrations.
 - Removing a Space never deletes its root directory. Customer/project deletion moves directories to `.trash`; session deletion uses DSH archive semantics.
+
+## 0.1.2 public release changes
+
+- Workbench now publishes the `sidebar.settings.trailing` root list slot for compact, optional plugin actions next to DSH Settings.
+- Expanded mode keeps trailing actions on the same row; collapsed mode stacks them immediately above Settings.
+- An empty slot is layout-neutral, and consumers remain optional so Workbench has no dependency on any restart or utility plugin.
 
 ## 0.1.1 public release changes
 
@@ -33,14 +39,14 @@
 
 ## Verification completed before tagging
 
-1. `pnpm check`: typecheck, 73 tests and all three bundles pass, including the generic footer overlay regression contract.
+1. `pnpm check`: typecheck, 74 tests and all three bundles pass, including the generic footer overlay and settings-trailing slot contracts.
 2. `pnpm audit --prod`: no known vulnerabilities.
 3. Tarball inspection: no local paths, user data, credentials, sibling plugin source or source maps.
 4. Fresh isolated install, `--dump-config`, server startup and served-client checksum pass.
 5. Migration from the previous internal build to the public `0.1.0` runtime passes in isolation.
-6. The internal real-profile build passed UI smoke; relocated historical session ownership and search hierarchy remain correct, with no console errors or warnings. The exact public `0.1.1` package and the usage-billing hover overlay are verified before tagging.
+6. A fresh isolated DSH profile loaded the exact public `0.1.2` client. Browser QA verified zero-width empty state, expanded Settings-trailing alignment, and collapsed stacking above Settings.
 
-Remaining release action: verify, commit and tag `v0.1.1`; GitHub Actions will create the `.tgz` and checksum release files.
+Remaining release action: verify, commit and tag `v0.1.2`; GitHub Actions will create the `.tgz` and checksum release files.
 
 ## Working tree policy
 

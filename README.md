@@ -2,7 +2,7 @@
 
 面向 DeepSeek Harness（DSH）的本地多工作台插件。它以“工作台 → 客户 → 项目 → 会话”组织目录，同时保留独立的普通会话与普通项目；同一条会话只显示在一个归属层级。
 
-当前公开版本：`0.1.1`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
+当前公开版本：`0.1.2`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
 
 ## 主要能力
 
@@ -12,6 +12,7 @@
 - 客户与项目的创建、重命名、移动、归档和安全删除；删除内容进入工作台内的 `.trash`。
 - 项目文件按 Word、Excel、PPT、PDF、图片等类型归集和搜索。
 - 模型可使用 `workbench_*` 工具查询和维护工作台；删除工具要求显式确认。
+- 提供 `sidebar.settings.trailing` 公共列表插槽，独立插件可在“设置”右侧添加紧凑快捷按钮；折叠侧边栏时自动移到设置上方。
 - 深浅主题、侧边栏收起/展开和 DSH 原生拖拽调宽。
 
 ## 重要兼容说明
@@ -24,11 +25,11 @@ Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏�
 
 > npm 上的同名 `dsh-workbench` 属于其他项目。不要执行 `dsh plugin ... add dsh-workbench`，以免安装错误的软件包。
 
-从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.1.tgz` 和对应 `.sha256`，校验后安装本地文件：
+从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.1.2.tgz` 和对应 `.sha256`，校验后安装本地文件：
 
 ```bash
-shasum -a 256 -c dsh-workbench-0.1.1.tgz.sha256
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.1.tgz
+shasum -a 256 -c dsh-workbench-0.1.2.tgz.sha256
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.1.2.tgz
 dsh --profile web --dump-config
 dsh --profile web
 ```

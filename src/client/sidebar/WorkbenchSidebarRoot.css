@@ -337,11 +337,39 @@
   overflow: visible;
 }
 
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsRow,
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsArea,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsTrailing,
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .footerActions {
   flex: none;
   min-width: 0;
   width: 100%;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 0;
+  overflow: visible;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsArea {
+  min-width: 0;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsTrailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: auto;
+  margin-inline-start: 4px;
+  overflow: visible;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .settingsTrailing:not(:has(> [data-slot] > *)) {
+  display: none;
 }
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .footerActions {
@@ -400,6 +428,22 @@
   display: flex;
   justify-content: center;
   width: auto;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"].collapsed .settingsRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 36px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"].collapsed .settingsTrailing {
+  order: -1;
+  flex-direction: column;
+  justify-content: center;
+  width: 36px;
+  margin-inline-start: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

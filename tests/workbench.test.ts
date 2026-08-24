@@ -208,6 +208,27 @@ describe("UI contract", () => {
     expect(rootCss).not.toContain(".collapsed .footerActions {\n  display: none");
   });
 
+  it("公开设置右侧列表插槽，展开时同行、折叠时排列在设置上方", async () => {
+    const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    const slots = await readFile(new URL("../src/client/sidebar/slots.ts", import.meta.url), "utf8");
+    const client = await readFile(new URL("../src/client/index.tsx", import.meta.url), "utf8");
+
+    expect(slots).toContain('"sidebar.settings.trailing": { kind: "list"; scope: "root"');
+    expect(slots).toContain('PropsRenderSlots<"sidebar.settings" | "sidebar.settings.trailing" | "sidebar.footer.action">');
+    expect(client).toContain('"sidebar.settings.trailing": { kind: "list", scope: "root" }');
+    expect(root).toContain('className="settingsRow"');
+    expect(root).toContain('renderSlot("sidebar.settings.trailing", { wide })');
+    expect(root.indexOf('renderSlot("sidebar.settings", { wide })'))
+      .toBeLessThan(root.indexOf('renderSlot("sidebar.settings.trailing", { wide })'));
+    expect(rootCss).toContain("grid-template-columns: minmax(0, 1fr) max-content");
+    expect(rootCss).toContain('.settingsTrailing:not(:has(> [data-slot] > *))');
+    expect(rootCss).toContain("margin-inline-start: 4px");
+    expect(rootCss).toContain(".collapsed .settingsTrailing");
+    expect(rootCss).toContain("order: -1");
+    expect(rootCss).toContain("overflow: visible");
+  });
+
   it("侧栏字阶使用 DSH 原生 typography tokens 并按层级统一", async () => {
     const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
     const hierarchy = rootCss.slice(rootCss.indexOf("0.9.5 typography hierarchy"));
