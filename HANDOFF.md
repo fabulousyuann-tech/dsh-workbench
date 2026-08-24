@@ -52,7 +52,7 @@
 5. Migration from the previous internal build to the public `0.1.0` runtime passes in isolation.
 6. A fresh isolated DSH profile installed the exact `0.1.3` tarball, loaded the Host/client bundles, returned the web shell, and matched the built client checksum. Browser QA verified that an empty unclassified section consumes zero space and reported no console errors or warnings.
 
-Remaining release action: commit and tag `v0.1.3`; GitHub Actions will create the `.tgz` and checksum release files. Local release tarball SHA-256: `730f0fcc8e5e7784ebf9790bb80f781b61fd9cf42b51e19b802e1d19963a12d8`.
+Published: GitHub Release `v0.1.3` completed successfully. The published `dsh-workbench-0.1.3.tgz` SHA-256 is `0e24b8c3c165ed4dccdc596e82d901a7e5fa8b411146da0199d53eed87e75550`; its downloaded checksum file and embedded package version were verified. The locally built macOS tarball SHA-256 is `730f0fcc8e5e7784ebf9790bb80f781b61fd9cf42b51e19b802e1d19963a12d8`; compressed archive digests may differ across builders, so users must use the checksum asset beside the downloaded GitHub package.
 
 ## Working tree policy
 
