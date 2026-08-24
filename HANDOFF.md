@@ -6,7 +6,7 @@
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
-- Release tarball SHA-256: `2d7048c50b6d9b4409556b4f564573bd43815652848a27a5d31c1416973e86db`
+- Release tarball SHA-256: use the `.tgz.sha256` asset generated beside each GitHub Release (the compressed archive digest is build-specific)
 - Built client SHA-256: `29d68299f48ef098530fc618874f4424d70db3c7d476462344ec3480d0aa0f21`
 
 ## Architecture boundaries
