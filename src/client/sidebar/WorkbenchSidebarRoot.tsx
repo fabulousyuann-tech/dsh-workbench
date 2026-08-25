@@ -8,10 +8,13 @@ import {
 
 import type { WorkbenchViewFace } from "../face.ts";
 import type { WorkbenchKey } from "../locales.ts";
+import type { WorkbenchSpace } from "../../types.ts";
+import { ActiveSessionsPanel } from "./ActiveSessionsPanel.tsx";
 import { WorkbenchBrand } from "./WorkbenchBrand.tsx";
 import { WorkbenchSidebarPanel } from "./WorkbenchSidebarPanel.tsx";
 import { SpaceContextRail } from "./SpaceContextRail.tsx";
 import { UnmanagedSessionsPanel } from "./UnmanagedSessionsPanel.tsx";
+import { setProjectMapSidebarGeometry } from "../projectMap/store.ts";
 import type { WorkbenchSidebarSlotProps } from "./slots.ts";
 import "./WorkbenchSidebarRoot.css";
 
@@ -26,6 +29,8 @@ export type WorkbenchSidebarRootProps = WorkbenchSidebarSlotProps & {
   workbenchFace: WorkbenchViewFace;
   workbenchT: (key: WorkbenchKey) => string;
   managedRootPaths: readonly string[];
+  spaces: readonly WorkbenchSpace[];
+  aliasesBySpace: Readonly<Record<string, readonly string[]>>;
   selectedSpaceId: string | undefined;
   selectedRootPath: string | undefined;
   selectedRootAliases: readonly string[];
@@ -49,6 +54,8 @@ export function WorkbenchSidebarRoot({
   workbenchFace,
   workbenchT,
   managedRootPaths,
+  spaces,
+  aliasesBySpace,
   selectedSpaceId,
   selectedRootPath,
   selectedRootAliases,
@@ -73,6 +80,10 @@ export function WorkbenchSidebarRoot({
   if (!collapsed) lastWideWidth.current = width;
   const everWide = useRef(!collapsed);
   if (!collapsed) everWide.current = true;
+
+  useEffect(() => {
+    setProjectMapSidebarGeometry(collapsed ? 56 : width, collapsed);
+  }, [collapsed, width]);
 
   const column = useRef<HTMLDivElement>(null);
   const [pointerInside, setPointerInside] = useState(false);
@@ -153,6 +164,15 @@ export function WorkbenchSidebarRoot({
       <div className="regionArea">
         {wide && (
           <div className="sidebarLibraryScroll">
+            <ActiveSessionsPanel
+              t={workbenchT}
+              query={query}
+              spaces={spaces}
+              aliasesBySpace={aliasesBySpace}
+              useSessions={useSessions}
+              useWorkspaces={useWorkspaces}
+              openSession={openSession}
+            />
             <UnmanagedSessionsPanel
               t={workbenchT}
               query={query}
@@ -180,6 +200,7 @@ export function WorkbenchSidebarRoot({
                 useSessions={useSessions}
                 useWorkspaces={useWorkspaces}
                 selectedSpaceName={selectedSpaceName}
+                selectedSpaceId={selectedSpaceId}
                 selectedRootPath={selectedRootPath}
                 selectedRootAliases={selectedRootAliases}
                 onProjectSessionOpen={() => {

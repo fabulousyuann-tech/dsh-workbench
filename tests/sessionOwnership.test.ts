@@ -7,6 +7,7 @@ import type {
 } from "@deepseek-ai/dsh-client-runtime/client";
 
 import {
+  deriveActiveSessions,
   deriveBasicSessionPartition,
   deriveUnmanagedSessions,
   deriveWorkbenchSessions,
@@ -126,5 +127,54 @@ describe("会话归属", () => {
     const workspaces = [workspace("outside", "/Users/me/HARNESS", ["plain"])];
     expect(deriveUnmanagedSessions(sessions(), workspaces, [sid("plain")], ["/work"]))
       .toEqual([]);
+  });
+
+  it("全局进行中视图按等待处理、运行中、刚完成排序并标注所属区域", () => {
+    const state = sessions();
+    state.byId[sid("plain")] = {
+      ...state.byId[sid("plain")]!,
+      pendingInteraction: "question",
+    };
+    state.byId[sid("customer")] = {
+      ...state.byId[sid("customer")]!,
+      completed: true,
+    };
+    const workspaces = [
+      workspace("outside", "/Users/me/HARNESS", ["plain"]),
+      workspace("customer", "/work/acme", ["customer"]),
+      workspace("project", "/work/acme/site", ["project"]),
+    ];
+    const result = deriveActiveSessions(state, workspaces, [], [
+      { id: "client-work", name: "客户工作台", rootPath: "/work" },
+    ], {});
+    expect(result.map((row) => [row.id, row.activity])).toEqual([
+      [sid("plain"), "pending"],
+      [sid("project"), "running"],
+      [sid("customer"), "completed"],
+    ]);
+    expect(result.map((row) => row.ownerLabel)).toEqual([
+      "HARNESS",
+      "客户工作台 / site",
+      "客户工作台 / acme",
+    ]);
+    expect(result.map((row) => row.spaceId)).toEqual([undefined, "client-work", "client-work"]);
+  });
+
+  it("进行中视图兼容工作台迁移前的历史根路径并排除归档会话", () => {
+    const state = sessions();
+    state.byId[sid("project")] = {
+      ...state.byId[sid("project")]!,
+      cwd: "/legacy/acme/site",
+    };
+    const result = deriveActiveSessions(state, [], [sid("customer")], [
+      { id: "client-work", name: "客户工作台", rootPath: "/work" },
+    ], { "client-work": ["/legacy"] });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: sid("project"),
+      activity: "running",
+      ownerLabel: "客户工作台 / acme / site",
+      spaceId: "client-work",
+    });
   });
 });

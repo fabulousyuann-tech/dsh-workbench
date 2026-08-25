@@ -135,7 +135,9 @@ describe("UI contract", () => {
     expect(component).toContain('{t("space.manage")}');
     expect(component).toContain('t("space.settings")');
     expect(component).toContain('className="spaceManageRail"');
-    expect(component).toContain('hidden={!expanded}');
+    expect(component).toContain('className={expanded ? "spaceLibraryChildren open"');
+    expect(component).toContain('aria-hidden={!expanded}');
+    expect(component).toContain('className="spaceLibraryChildrenInner"');
     expect(component).toContain('className="spaceRemoveButton"');
     expect(component).toContain('className="spacePathField"');
     expect(component).toContain('t("space.changePath")');
@@ -157,6 +159,9 @@ describe("UI contract", () => {
     expect(css).toContain(".spaceContext.library");
     expect(css).toContain(".spaceLibraryRow.selected");
     expect(css).toContain(".spaceLibraryChildren");
+    expect(css).toContain("grid-template-rows: 0fr");
+    expect(css).toContain(".spaceLibraryChildren.open");
+    expect(css).toContain("grid-template-rows: 1fr");
     expect(css).toContain("@media (max-width:600px)");
     expect(css).toContain("prefers-reduced-motion:reduce");
     expect(css).toContain("--dsw-space-blue");
@@ -250,6 +255,7 @@ describe("UI contract", () => {
     const panel = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarPanel.tsx", import.meta.url), "utf8");
     const detail = await readFile(new URL("../src/client/WorkbenchProjectDetail.tsx", import.meta.url), "utf8");
     const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const activePanel = await readFile(new URL("../src/client/sidebar/ActiveSessionsPanel.tsx", import.meta.url), "utf8");
     const basicPanel = await readFile(new URL("../src/client/sidebar/UnmanagedSessionsPanel.tsx", import.meta.url), "utf8");
     const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
     const client = await readFile(new URL("../src/client/index.tsx", import.meta.url), "utf8");
@@ -301,6 +307,12 @@ describe("UI contract", () => {
     expect(panel).toContain("sessionsByProjectId");
     expect(panel).toContain("archiveSession={archiveSession}");
     expect(root).toContain('<WorkbenchBrand name={sidebarTitle} />');
+    expect(root).toContain("<ActiveSessionsPanel");
+    expect(root.indexOf("<ActiveSessionsPanel")).toBeLessThan(root.indexOf("<UnmanagedSessionsPanel"));
+    expect(activePanel).toContain("deriveActiveSessions(");
+    expect(activePanel).toContain('session.pendingInteraction === "approval"');
+    expect(activePanel).toContain('session.pendingInteraction === "plan-review"');
+    expect(activePanel).toContain('className={`activeSessionState ${session.activity}`}');
     expect(panel).not.toContain('className="primaryActionGroup"');
     expect(panel).not.toContain('className="primaryNewSession"');
     expect(panel).toContain('const [expanded, setExpanded] = useState(false)');

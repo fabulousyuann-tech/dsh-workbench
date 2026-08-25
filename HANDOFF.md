@@ -2,12 +2,12 @@
 
 ## Current release candidate
 
-- Public version: `0.1.3`
+- Current public release: `0.3.0`
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
 - Release tarball SHA-256: use the `.tgz.sha256` asset generated beside each GitHub Release (the compressed archive digest is build-specific)
-- Built client SHA-256: `28b28502c4df9ec605afedb6d315dbfe46f1fa92a27947bcbee3840b437fa696`
+- Built client SHA-256: `9f91de9d966530fba04a4b04e9d75f9f0b118af8ac11d631aa38103ce8defdea`
 
 ## Architecture boundaries
 
@@ -15,6 +15,26 @@
 - Ordinary Sessions/Workspaces and Workbench-owned Sessions are mutually exclusive in the sidebar.
 - Workbench owns only its overlay and customer/project directory operations. DSH remains the source of truth for Sessions and Workspace registrations.
 - Removing a Space never deletes its root directory. Customer/project deletion moves directories to `.trash`; session deletion uses DSH archive semantics.
+
+## 0.3.0 public release changes
+
+1. The top-level Active section aggregates waiting, running and recently completed Sessions across ordinary projects and every Workbench without changing ownership.
+2. Active rows keep their original project or Workbench path, support direct navigation and participate in sidebar search by title or owner path.
+3. State comes from DSH native `pendingInteraction`, `running` and `completed` projections; no second task state or transcript store is introduced.
+4. Motion uses distinct waiting/running/completed indicators and respects reduced-motion preferences.
+5. Release verification passes typecheck, 82 tests and all Host, Client and Typert bundles.
+
+## 0.2.0 acceptance candidate changes
+
+1. Each Workbench project row now exposes a conversation-map action. It opens in DSH's root `shell.overlay`, preserving the single Workbench sidebar and leaving official conversation/session ownership intact.
+2. M1 maps only current, non-archived DSH Sessions whose Workspace/cwd resolves to the selected project. User-created fork children remain visible and are linked by `parentId`; subagents and sessions owned by other projects are excluded.
+3. M2 lazily reads a bounded DSH history page for the selected card and projects human prompts, assistant previews and a tool-step count. It never persists tool arguments/results or a second transcript database.
+4. M3 forks at the selected completed turn through DSH native `sessions.fork({ sessionId, atSeq, increaseTitle: true })`; the child inherits cwd/Workspace membership from DSH and opens immediately.
+5. M4 archives through DSH `workspaces.archiveSession`, reacts to live Session/Workspace baselines, prunes stale node positions and keeps only finite, capped local layout metadata. Layout identity survives root-path relocation and migrates across an unambiguous customer move.
+6. The map supports card drag, canvas pan/zoom, fit, Escape/close, responsive inspector mode, light/dark semantic tokens, empty/loading/error states and a 40-message bounded history posture.
+7. `tests/project-map.test.ts` covers ownership, lineage, archived/subagent exclusion, old-root rebasing, stable layout, turn folding, payload non-retention and native DSH API contracts.
+8. Final candidate verification: `pnpm check` passes 80 tests plus typecheck and all bundles; `pnpm audit --prod` reports no known vulnerabilities. The local tarball SHA-256 is `26c52e2db741facc78b22d116b8e73a037a9b5adb10396130ac6771b30d12db1` and the client SHA-256 is `9f91de9d966530fba04a4b04e9d75f9f0b118af8ac11d631aa38103ce8defdea`.
+9. A fresh isolated DSH home installed the exact tarball, kept official `ui-workspace`, disabled only official `ui-sidebar`, started successfully and served a checksum-identical client with no browser warnings/errors. The real web profile is installed and restarted on port 3080 at `0.2.0`; visual QA passed the project-map empty state, light theme, sidebar alignment, 279px expanded → 56px collapsed resize and zero console warnings/errors.
 
 ## 0.1.3 public release changes
 

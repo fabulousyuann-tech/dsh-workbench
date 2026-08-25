@@ -58,10 +58,14 @@ import { inferLegacyRootAliases } from "./sidebar/sessionOwnership.ts";
 import { WorkbenchSettingsCard } from "./WorkbenchSettingsCard.tsx";
 import { createSpaceSession } from "./sessionCreation.ts";
 import { installFileDropCompatibilityBridge } from "./fileDropBridge.ts";
+import { ProjectConversationMap } from "./projectMap/ProjectConversationMap.tsx";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
     "dsh.workbench": WorkbenchKey;
+  }
+  interface SlotMap {
+    "shell.overlay": { kind: "list"; scope: "root" };
   }
 }
 
@@ -575,11 +579,35 @@ export function apply(ctx: ClientContext): void {
         workbenchFace={workbenchFace}
         workbenchT={workbenchT}
         managedRootPaths={managedRootPaths}
+        spaces={workbenchRoots.spaces}
+        aliasesBySpace={aliasesBySpace}
          selectedSpaceId={workbenchRoots.selectedSpaceId}
          selectedRootPath={workbenchRoots.selectedRootPath}
         selectedRootAliases={selectedRootAliases}
         selectedSpaceName={workbenchRoots.selectedSpaceName}
         sidebarTitle={settingsSnapshot.value?.sidebarTitle?.trim() || "DSH"}
+      />
+    );
+  }
+
+  function BoundProjectConversationMap() {
+    const sessions = ctx.sessions as unknown as ISessions;
+    const sessionsState = useSyncExternalStore(
+      (listener) => sessions.list.subscribe(listener),
+      () => sessions.list.getSnapshot(),
+    );
+    const workspaceState = useSyncExternalStore(
+      (listener) => ctx.workspaces.list.subscribe(listener),
+      () => ctx.workspaces.list.getSnapshot(),
+    );
+    return (
+      <ProjectConversationMap
+        sessionsState={sessionsState}
+        workspaceState={workspaceState}
+        connection={(ctx as ClientContext & { connection: ConnectionHandle }).connection}
+        openSession={(sessionId) => { sessions.open(sessionId); }}
+        forkSession={(sessionId, atSeq) => sessions.fork({ sessionId, atSeq, increaseTitle: true })}
+        archiveSession={(sessionId) => ctx.workspaces.archiveSession(sessionId)}
       />
     );
   }
@@ -596,6 +624,14 @@ export function apply(ctx: ClientContext): void {
       },
       inject: injectSidebar,
     }, BoundSidebar),
+  );
+
+  ctx.slots.inject("shell.overlay", () =>
+    ctx.slots.register({
+      name: "shell.overlay",
+      id: "dsh-workbench.project-map",
+      priority: 20,
+    }, BoundProjectConversationMap),
   );
 
   ctx.effect(async () => {

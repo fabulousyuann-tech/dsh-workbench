@@ -1,0 +1,149 @@
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsPanel {
+  margin: 2px 0 8px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 24%, var(--dsw-alias-border-l2));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 5%, transparent);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsHeading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 5px 2px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsHeading strong {
+  flex: 1;
+  min-width: 0;
+  font: var(--dsw-font-xxs-strong-12);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsHeading small {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsHeadingDot,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-business-primary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsHeadingDot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionsList {
+  display: grid;
+  gap: 2px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionRow {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) max-content;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms var(--ds-ease-in-out);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionRow:hover,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionRow.current {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionRow:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState {
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState.pending {
+  background: var(--dsw-alias-state-warning, #d88a16);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState.running {
+  animation: workbench-active-pulse 1.8s ease-in-out infinite;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState.completed {
+  background: var(--dsw-alias-state-success, #2b9a66);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionBody {
+  grid-row: 1 / 3;
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionTitle,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionOwner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionTitle {
+  font: var(--dsw-font-xs-strong-13);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionOwner,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionTime {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionBadge {
+  align-self: end;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 11%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+  font: var(--dsw-font-xxs-strong-12);
+  white-space: nowrap;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionBadge.pending {
+  background: color-mix(in srgb, var(--dsw-alias-state-warning, #d88a16) 13%, transparent);
+  color: var(--dsw-alias-state-warning, #b66a00);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionBadge.completed {
+  background: color-mix(in srgb, var(--dsw-alias-state-success, #2b9a66) 12%, transparent);
+  color: var(--dsw-alias-state-success, #218255);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionTime {
+  align-self: start;
+  justify-self: end;
+}
+
+@keyframes workbench-active-pulse {
+  50% { opacity: .42; transform: scale(.84); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .activeSessionState.running {
+    animation: none;
+  }
+}

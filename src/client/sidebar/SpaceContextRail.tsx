@@ -166,7 +166,14 @@ export function SpaceContextRail({ face, t, children }: {
               {space.pathStatus === "missing" && <span className="spaceRailMissing" aria-label={t("space.folderMissing")}>!</span>}
               <IconChevronDownOutline14 className={expanded ? "spaceLibraryChevron open" : "spaceLibraryChevron"} />
             </button>
-            {space.id === selectedId && <div className="spaceLibraryChildren" hidden={!expanded}>{children}</div>}
+            {space.id === selectedId && (
+              <div
+                className={expanded ? "spaceLibraryChildren open" : "spaceLibraryChildren"}
+                aria-hidden={!expanded}
+              >
+                <div className="spaceLibraryChildrenInner">{children}</div>
+              </div>
+            )}
           </div>;
         })}
       </div>

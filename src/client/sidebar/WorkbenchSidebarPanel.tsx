@@ -11,6 +11,7 @@ import {
   IconCloseFill14,
   IconEditOutline16,
   IconFolderClose16,
+  IconBranchOutline16,
   IconListPenOutline16,
   IconPlusOutline16,
   IconTrashOutline16,
@@ -26,6 +27,7 @@ import type { WorkbenchKey } from "../locales.ts";
 import { formatRelativeTime } from "../relativeTime.ts";
 import { useLibraryEpoch } from "../selection.ts";
 import { WorkbenchProjectDetail } from "../WorkbenchProjectDetail.tsx";
+import { openProjectMap } from "../projectMap/store.ts";
 import { SessionList } from "./SessionList.tsx";
 import { deriveWorkbenchSessions, isPathInside, rebaseDirectoryFromAliases } from "./sessionOwnership.ts";
 import "./WorkbenchSidebarPanel.css";
@@ -54,6 +56,7 @@ export function WorkbenchSidebarPanel({
   selectedRootPath,
   selectedRootAliases,
   selectedSpaceName,
+  selectedSpaceId,
   onProjectSessionOpen,
 }: WorkbenchViewFace & {
   t: (key: WorkbenchKey) => string;
@@ -66,19 +69,21 @@ export function WorkbenchSidebarPanel({
   selectedRootPath: string | undefined;
   selectedRootAliases: readonly string[];
   selectedSpaceName: string | undefined;
+  selectedSpaceId: string | undefined;
   onProjectSessionOpen?: () => void;
 }) {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const toolbarRoot = useRef<HTMLDivElement>(null);
   const listAbort = useRef<AbortController>();
   const listRequestId = useRef(0);
+  const listRequested = useRef(false);
   const libraryEpoch = useLibraryEpoch();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -169,6 +174,7 @@ export function WorkbenchSidebarPanel({
   const loadList = async (nextQuery = query) => {
     if (!ready()) {
       setError(t("empty.remote"));
+      setLoading(false);
       return;
     }
     listAbort.current?.abort();
@@ -201,9 +207,11 @@ export function WorkbenchSidebarPanel({
 
   useEffect(() => {
     listAbort.current?.abort();
+    const delay = listRequested.current ? 350 : 0;
+    listRequested.current = true;
     const handle = window.setTimeout(() => {
       void loadList(query);
-    }, 350);
+    }, delay);
     return () => {
       window.clearTimeout(handle);
     };
@@ -598,6 +606,10 @@ export function WorkbenchSidebarPanel({
             openSession={openSession}
             archiveSession={archiveSession}
             forceExpanded={normalizedQuery !== ""}
+            selectedSpaceId={selectedSpaceId}
+            selectedSpaceName={selectedSpaceName}
+            selectedRootPath={selectedRootPath}
+            selectedRootAliases={selectedRootAliases}
           />
         ))}
       </div>
@@ -670,6 +682,10 @@ function CustomerGroup({
   openSession,
   archiveSession,
   forceExpanded,
+  selectedSpaceId,
+  selectedSpaceName,
+  selectedRootPath,
+  selectedRootAliases,
 }: {
   customer: CustomerSummary;
   selectedId: string | null;
@@ -687,6 +703,10 @@ function CustomerGroup({
   openSession: (sessionId: SessionId) => void;
   archiveSession: (sessionId: SessionId) => Promise<void>;
   forceExpanded: boolean;
+  selectedSpaceId: string | undefined;
+  selectedSpaceName: string | undefined;
+  selectedRootPath: string | undefined;
+  selectedRootAliases: readonly string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const shownExpanded = expanded || forceExpanded;
@@ -757,6 +777,20 @@ function CustomerGroup({
               t={t}
               onEnter={() => { onEnter(project); }}
               onOpenDetail={() => { onOpenDetail(project); }}
+              onOpenMap={() => {
+                if (selectedSpaceId === undefined || selectedRootPath === undefined) return;
+                openProjectMap({
+                  spaceId: selectedSpaceId,
+                  spaceName: selectedSpaceName ?? selectedRootPath,
+                  rootPath: selectedRootPath,
+                  rootAliases: selectedRootAliases,
+                  customerId: project.customerId,
+                  customerName: project.customerName,
+                  projectId: project.id,
+                  projectTitle: project.title,
+                  projectPath: project.folderPath,
+                });
+              }}
               onDelete={() => { onDeleteProject(project); }}
               openSession={openSession}
               archiveSession={archiveSession}
@@ -776,6 +810,7 @@ function ProjectSessionGroup({
   t,
   onEnter,
   onOpenDetail,
+  onOpenMap,
   onDelete,
   openSession,
   archiveSession,
@@ -787,6 +822,7 @@ function ProjectSessionGroup({
   t: (key: WorkbenchKey) => string;
   onEnter: () => void;
   onOpenDetail: () => void;
+  onOpenMap: () => void;
   onDelete: () => void;
   openSession: (sessionId: SessionId) => void;
   archiveSession: (sessionId: SessionId) => Promise<void>;
@@ -803,6 +839,7 @@ function ProjectSessionGroup({
         onToggle={() => { setExpanded(!expanded); }}
         onEnter={() => { setExpanded(true); onEnter(); }}
         onOpenDetail={onOpenDetail}
+        onOpenMap={onOpenMap}
         onDelete={onDelete}
       />
       {expanded && sessions.length > 0 && (
@@ -821,6 +858,7 @@ function ProjectRow({
   onToggle,
   onEnter,
   onOpenDetail,
+  onOpenMap,
   onDelete,
 }: {
   project: ProjectSummary;
@@ -831,6 +869,7 @@ function ProjectRow({
   onToggle: () => void;
   onEnter: () => void;
   onOpenDetail: () => void;
+  onOpenMap: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -873,6 +912,16 @@ function ProjectRow({
           onClick={onOpenDetail}
         >
           <IconListPenOutline16 size={15} />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("project.map")} delayMs={400}>
+        <button
+          type="button"
+          className="rowAction"
+          aria-label={`${t("project.map")}: ${project.title}`}
+          onClick={onOpenMap}
+        >
+          <IconBranchOutline16 size={15} />
         </button>
       </Tooltip>
       <Tooltip label={t("detail.delete")} delayMs={400}>

@@ -1,4 +1,5 @@
 import type {
+  PendingInteractionStatus,
   SessionId,
   SessionListState,
   WorkspaceId,
@@ -42,6 +43,19 @@ export interface WorkbenchRootDescriptor {
   id: string;
   rootPath: string;
   rootPathHistory?: readonly string[];
+}
+
+export interface ActiveSpaceDescriptor extends WorkbenchRootDescriptor {
+  name: string;
+}
+
+export type ActiveSessionState = "pending" | "running" | "completed";
+
+export interface ActiveSidebarSession extends SidebarSession {
+  activity: ActiveSessionState;
+  pendingInteraction?: PendingInteractionStatus;
+  ownerLabel: string;
+  spaceId?: string;
 }
 
 export function normalizeDirectoryPath(value: string): string {
@@ -151,6 +165,79 @@ function workspacePathBySession(workspaces: readonly WorkspaceView[]): Map<Sessi
     for (const id of workspace.sessionIds) result.set(id, workspace.path);
   }
   return result;
+}
+
+function workspaceBySession(workspaces: readonly WorkspaceView[]): Map<SessionId, WorkspaceView> {
+  const result = new Map<SessionId, WorkspaceView>();
+  for (const workspace of workspaces) {
+    for (const id of workspace.sessionIds) result.set(id, workspace);
+  }
+  return result;
+}
+
+function activeOwner(
+  directory: string | undefined,
+  workspace: WorkspaceView | undefined,
+  spaces: readonly ActiveSpaceDescriptor[],
+  aliasesBySpace: Readonly<Record<string, readonly string[]>>,
+): { label: string; spaceId?: string } {
+  const normalizedDirectory = directory === undefined ? undefined : normalizeDirectoryPath(directory);
+  const candidates = spaces.flatMap((space) => [space.rootPath, ...(aliasesBySpace[space.id] ?? [])]
+    .map((root) => ({ space, root: normalizeDirectoryPath(root) })))
+    .filter((candidate) => isPathInside(normalizedDirectory, candidate.root))
+    .sort((left, right) => right.root.length - left.root.length);
+  const match = candidates[0];
+  if (match !== undefined) {
+    const relative = normalizedDirectory?.slice(match.root.length).replace(/^\/+|\/+$/gu, "") ?? "";
+    const relativeLabel = workspace?.title.trim() || relative.split("/").filter(Boolean).slice(-2).join(" / ");
+    return {
+      label: relativeLabel === "" || relativeLabel === match.space.name
+        ? match.space.name
+        : `${match.space.name} / ${relativeLabel}`,
+      spaceId: match.space.id,
+    };
+  }
+  if (workspace !== undefined) return { label: workspace.title };
+  return { label: "" };
+}
+
+/**
+ * Flatten live DSH attention signals across ordinary projects and every
+ * Workbench. `completed` is the native unread-completion reminder and clears
+ * when the user opens that Session, so this view owns no parallel status store.
+ */
+export function deriveActiveSessions(
+  list: SessionListState,
+  workspaces: readonly WorkspaceView[],
+  archivedSessionIds: readonly SessionId[],
+  spaces: readonly ActiveSpaceDescriptor[],
+  aliasesBySpace: Readonly<Record<string, readonly string[]>>,
+): ActiveSidebarSession[] {
+  const ownerBySession = workspaceBySession(workspaces);
+  const rank: Record<ActiveSessionState, number> = { pending: 0, running: 1, completed: 2 };
+  return visibleSessions(list, archivedSessionIds)
+    .flatMap((session): ActiveSidebarSession[] => {
+      const summary = list.byId[session.id];
+      if (summary === undefined) return [];
+      const activity: ActiveSessionState | undefined = summary.pendingInteraction !== undefined
+        ? "pending"
+        : summary.running
+          ? "running"
+          : summary.completed === true
+            ? "completed"
+            : undefined;
+      if (activity === undefined) return [];
+      const workspace = ownerBySession.get(session.id);
+      const owner = activeOwner(workspace?.path ?? summary.cwd, workspace, spaces, aliasesBySpace);
+      return [{
+        ...session,
+        activity,
+        ...(summary.pendingInteraction === undefined ? {} : { pendingInteraction: summary.pendingInteraction }),
+        ownerLabel: owner.label,
+        ...(owner.spaceId === undefined ? {} : { spaceId: owner.spaceId }),
+      }];
+    })
+    .sort((left, right) => rank[left.activity] - rank[right.activity] || right.updatedAt - left.updatedAt);
 }
 
 export function deriveUnmanagedSessions(
