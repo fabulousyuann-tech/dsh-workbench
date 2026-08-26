@@ -50,6 +50,8 @@ export interface WorkbenchSidebarInjected {
    * session.
    */
   openProjectSession: (folderPath: string) => Promise<void>;
+  /** Create or reuse a blank Session in the project folder, never reopen history. */
+  startFolderSession: (folderPath: string) => Promise<void>;
   /** Always start a fresh chat inside an already registered basic Workspace. */
   startProjectSession: (workspaceId: WorkspaceId) => Promise<void>;
   /** Move an unclassified Session into an existing basic Workspace. */

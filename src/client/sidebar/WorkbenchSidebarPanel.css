@@ -1641,3 +1641,115 @@
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
+
+/* Project rows keep the frequent create action visible and move secondary actions into one menu. */
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow {
+  position: relative;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreAction {
+  opacity: .42;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow:hover .projectNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow:hover .projectMoreAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow:focus-within .projectNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow:focus-within .projectMoreAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow.selected .projectNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRow.selected .projectMoreAction {
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectNewSessionAction:disabled {
+  cursor: wait;
+  opacity: .35;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreMenuRoot {
+  flex: none;
+  display: inline-flex;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreAction[aria-expanded="true"] {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreGlyph {
+  display: block;
+  margin-top: -4px;
+  font: var(--dsw-font-s-strong-14);
+  line-height: 1;
+}
+
+@media (hover: none) {
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .projectNewSessionAction,
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreAction {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .projectNewSessionAction,
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .projectMoreAction {
+    transition: none;
+  }
+}
+
+/* 0.3.1: the customer or project row owns disclosure; frequent create and overflow actions stay at the trailing edge. */
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerToggle,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRowMain {
+  padding-left: 6px;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerToggle[aria-expanded="true"] .customerIcon,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .projectRowMain[aria-expanded="true"] .rowIcon {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerMoreAction {
+  opacity: .42;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader:hover .customerNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader:hover .customerMoreAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader:focus-within .customerNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader:focus-within .customerMoreAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader.sessionActive .customerNewSessionAction,
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerHeader.sessionActive .customerMoreAction {
+  opacity: 1;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerNewSessionAction:disabled {
+  cursor: wait;
+  opacity: .35;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerMoreMenuRoot {
+  flex: none;
+  display: inline-flex;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"] .customerMoreAction[aria-expanded="true"] {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  opacity: 1;
+}
+
+@media (hover: none) {
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .customerNewSessionAction,
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .customerMoreAction {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .customerNewSessionAction,
+  [data-plugin="dsh-workbench"][data-surface="sidebar"] .customerMoreAction {
+    transition: none;
+  }
+}

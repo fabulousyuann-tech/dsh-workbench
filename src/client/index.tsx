@@ -458,6 +458,12 @@ export function apply(ctx: ClientContext): void {
       if (reopenMostRecent(ctx, workspace.workspaceId)) return;
       ctx.workspaces.startSession(workspace.workspaceId);
     },
+    startFolderSession: async (folderPath: string) => {
+      const state = ctx.workspaces.list.getSnapshot();
+      const workspace = state.items.find((item) => item.path === folderPath)
+        ?? await ctx.workspaces.create({ path: folderPath });
+      ctx.workspaces.startSession(workspace.workspaceId);
+    },
     startProjectSession: async (workspaceId) => {
       startRegisteredWorkspaceSession(workspaceId);
     },

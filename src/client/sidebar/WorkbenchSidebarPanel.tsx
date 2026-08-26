@@ -7,15 +7,16 @@ import type {
 import type { SnapshotSelectorHook } from "@deepseek-ai/dsh-client-ui-slots";
 import {
   Button,
-  IconChevronDownOutline14,
   IconCloseFill14,
   IconEditOutline16,
   IconFolderClose16,
+  IconFolderOpen16,
   IconBranchOutline16,
   IconListPenOutline16,
   IconPlusOutline16,
   IconTrashOutline16,
   Input,
+  Menu,
   Modal,
   RiskConfirmation,
   Tooltip,
@@ -36,7 +37,7 @@ export function WorkbenchSidebarPanel({
   t,
   query,
   ready,
-  openProjectSession,
+  startFolderSession,
   listProjects,
   getProject,
   listProjectFiles,
@@ -61,7 +62,7 @@ export function WorkbenchSidebarPanel({
 }: WorkbenchViewFace & {
   t: (key: WorkbenchKey) => string;
   query: string;
-  openProjectSession: (folderPath: string) => Promise<void>;
+  startFolderSession: (folderPath: string) => Promise<void>;
   useSessions: SnapshotSelectorHook<SessionListState>;
   useWorkspaces: SnapshotSelectorHook<WorkspaceListState>;
   openSession: (sessionId: SessionId) => void;
@@ -78,9 +79,6 @@ export function WorkbenchSidebarPanel({
   const listRequestId = useRef(0);
   const listRequested = useRef(false);
   const libraryEpoch = useLibraryEpoch();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -145,15 +143,14 @@ export function WorkbenchSidebarPanel({
     : rebaseDirectoryFromAliases(currentSessionPath ?? activeSessionPath, selectedRootPath, selectedRootAliases);
 
   const openDetail = (project: ProjectSummary): void => {
-    setSelectedId(project.folderPath);
     setDetailTarget(project);
   };
 
-  const enterFolderSession = async (folderPath: string): Promise<void> => {
+  const createFolderSession = async (folderPath: string): Promise<void> => {
     if (openingPath !== undefined) return;
     setOpeningPath(folderPath); setError(undefined);
     try {
-      await openProjectSession(folderPath);
+      await startFolderSession(folderPath);
       setActiveSessionPath(folderPath);
       onProjectSessionOpen?.();
     } catch (cause) {
@@ -161,15 +158,8 @@ export function WorkbenchSidebarPanel({
     } finally { setOpeningPath(undefined); }
   };
 
-  const enterProject = (project: ProjectSummary): void => {
-    setSelectedId(project.folderPath);
-    void enterFolderSession(project.folderPath);
-  };
-
-  const enterCustomer = (customer: CustomerSummary): void => {
-    setSelectedId(null);
-    void enterFolderSession(customer.folderPath);
-  };
+  const createProjectSession = (project: ProjectSummary): Promise<void> => createFolderSession(project.folderPath);
+  const createCustomerSession = (customer: CustomerSummary): Promise<void> => createFolderSession(customer.folderPath);
 
   const loadList = async (nextQuery = query) => {
     if (!ready()) {
@@ -190,10 +180,6 @@ export function WorkbenchSidebarPanel({
       const result = await listProjects("", "all", controller.signal);
       if (controller.signal.aborted || requestId !== listRequestId.current) return;
       setCustomers(result.customers);
-      const currentId = selectedIdRef.current;
-      if (currentId !== null && !result.projects.some((project) => project.folderPath === currentId)) {
-        setSelectedId(null);
-      }
     } catch (cause) {
       if (controller.signal.aborted || requestId !== listRequestId.current) return;
       setError(cause instanceof Error ? cause.message : t("empty.error"));
@@ -378,7 +364,6 @@ export function WorkbenchSidebarPanel({
     setProjectDeleteBusy(true); setProjectDeleteError(undefined);
     try {
       await deleteProject(projectDeleteTarget.id, projectDeleteTarget.customerId);
-      if (selectedIdRef.current === projectDeleteTarget.folderPath) setSelectedId(null);
       if (activeSessionPath === projectDeleteTarget.folderPath) setActiveSessionPath(undefined);
       setProjectDeleteOpen(false); setProjectDeleteTarget(null);
       await loadList(query);
@@ -388,7 +373,7 @@ export function WorkbenchSidebarPanel({
   };
 
   const activeProject = customers.flatMap((customer) => customer.projects).find((project) =>
-    project.folderPath === selectedId || isPathInside(effectiveActiveSessionPath, project.folderPath),
+    isPathInside(effectiveActiveSessionPath, project.folderPath),
   );
   const activeCustomer = customers.find((customer) =>
     isPathInside(effectiveActiveSessionPath, customer.folderPath)
@@ -591,10 +576,9 @@ export function WorkbenchSidebarPanel({
           <CustomerGroup
             key={customer.id}
             customer={customer}
-            selectedId={selectedId}
             t={t}
-            onEnter={enterProject}
-            onEnterCustomer={enterCustomer}
+            onCreate={createProjectSession}
+            onCreateCustomerSession={createCustomerSession}
             onOpenDetail={openDetail}
             openingPath={openingPath}
             activeSessionPath={effectiveActiveSessionPath}
@@ -667,10 +651,9 @@ export function WorkbenchSidebarPanel({
 
 function CustomerGroup({
   customer,
-  selectedId,
   t,
-  onEnter,
-  onEnterCustomer,
+  onCreate,
+  onCreateCustomerSession,
   onOpenDetail,
   openingPath,
   activeSessionPath,
@@ -688,10 +671,9 @@ function CustomerGroup({
   selectedRootAliases,
 }: {
   customer: CustomerSummary;
-  selectedId: string | null;
   t: (key: WorkbenchKey) => string;
-  onEnter: (project: ProjectSummary) => void;
-  onEnterCustomer: (customer: CustomerSummary) => void;
+  onCreate: (project: ProjectSummary) => Promise<void>;
+  onCreateCustomerSession: (customer: CustomerSummary) => Promise<void>;
   onOpenDetail: (project: ProjectSummary) => void;
   openingPath: string | undefined;
   activeSessionPath: string | undefined;
@@ -708,52 +690,76 @@ function CustomerGroup({
   selectedRootPath: string | undefined;
   selectedRootAliases: readonly string[];
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const shownExpanded = expanded || forceExpanded;
+  const activeWithin = isPathInside(activeSessionPath, customer.folderPath);
+  const [expandedOverride, setExpandedOverride] = useState<boolean>();
+  const shownExpanded = expandedOverride ?? (forceExpanded || activeWithin);
   const hasContents = customer.projects.length > 0 || customerSessions.length > 0;
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setExpandedOverride(undefined);
+  }, [activeWithin, forceExpanded]);
 
   return (
     <div className="customerGroup">
       <div className={activeSessionPath === customer.folderPath ? "customerHeader sessionActive" : "customerHeader"}>
         <button
           type="button"
-          className="customerExpand"
-          aria-expanded={shownExpanded}
-          aria-label={`${t(shownExpanded ? "customer.collapse" : "customer.expand")}: ${customer.name}`}
-          onClick={() => { setExpanded(!expanded); }}
-        >
-          <IconChevronDownOutline14 className={shownExpanded ? "chevron open" : "chevron"} />
-        </button>
-        <button
-          type="button"
           className="customerToggle"
-          disabled={openingPath !== undefined}
-          title={t("customer.openChat")}
-          aria-label={`${t("customer.openChat")}: ${customer.name}`}
-          onClick={() => { onEnterCustomer(customer); }}
+          title={t(shownExpanded ? "customer.collapse" : "customer.expand")}
+          aria-label={`${t(shownExpanded ? "customer.collapse" : "customer.expand")}: ${customer.name}`}
+          aria-expanded={shownExpanded}
+          onClick={() => { setExpandedOverride(!shownExpanded); }}
         >
-          <span className="customerIcon"><IconFolderClose16 size={15} /></span>
+          <span className="customerIcon">
+            {shownExpanded ? <IconFolderOpen16 size={15} /> : <IconFolderClose16 size={15} />}
+          </span>
           <span className="customerName">{customer.name}</span>
           <span className="customerCount">{t("customer.projects").replace("{n}", String(customer.projects.length))}</span>
         </button>
-        <button
-          type="button"
-          className="customerRename"
-          aria-label={`${t("customer.rename")}: ${customer.name}`}
-          title={t("customer.rename")}
-          onClick={() => { onRename(customer); }}
-        >
-          <IconEditOutline16 size={14} />
-        </button>
-        <button
-          type="button"
-          className="customerDelete"
-          aria-label={`${t("customer.delete")}: ${customer.name}`}
-          title={t("customer.delete")}
-          onClick={() => { onDelete(customer); }}
-        >
-          <IconTrashOutline16 size={14} />
-        </button>
+        <Tooltip label={t("sessions.customer.newChat")} delayMs={400}>
+          <button
+            type="button"
+            className="rowAction customerNewSessionAction"
+            aria-label={`${t("sessions.customer.newChat")}: ${customer.name}`}
+            disabled={openingPath !== undefined}
+            onClick={() => { void onCreateCustomerSession(customer); }}
+          >
+            <IconPlusOutline16 size={15} />
+          </button>
+        </Tooltip>
+        <Menu
+          className="customerMoreMenuRoot"
+          open={menuOpen}
+          portal
+          compact
+          align="end"
+          anchor={(
+            <Tooltip label={t("customer.more")} delayMs={400} disabled={menuOpen}>
+              <button
+                type="button"
+                className="rowAction customerMoreAction"
+                aria-label={`${t("customer.more")}: ${customer.name}`}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => { setMenuOpen(!menuOpen); }}
+              >
+                <span className="projectMoreGlyph" aria-hidden="true">…</span>
+              </button>
+            </Tooltip>
+          )}
+          items={[
+            { id: "rename", label: t("customer.rename"), icon: <IconEditOutline16 size={15} /> },
+            { type: "separator", id: "destructive" },
+            { id: "delete", label: t("customer.delete"), icon: <IconTrashOutline16 size={15} />, danger: true },
+          ]}
+          onClose={() => { setMenuOpen(false); }}
+          onSelect={(id) => {
+            setMenuOpen(false);
+            if (id === "rename") onRename(customer);
+            else if (id === "delete") onDelete(customer);
+          }}
+        />
       </div>
       {shownExpanded && (
         <div className="customerProjects">
@@ -771,11 +777,11 @@ function CustomerGroup({
             <ProjectSessionGroup
               key={project.id}
               project={project}
-              selected={project.folderPath === selectedId || activeSessionPath === project.folderPath}
+              selected={isPathInside(activeSessionPath, project.folderPath)}
               opening={openingPath === project.folderPath}
               sessions={sessionsByProjectId[project.folderPath] ?? []}
               t={t}
-              onEnter={() => { onEnter(project); }}
+              onCreate={() => { void onCreate(project); }}
               onOpenDetail={() => { onOpenDetail(project); }}
               onOpenMap={() => {
                 if (selectedSpaceId === undefined || selectedRootPath === undefined) return;
@@ -808,7 +814,7 @@ function ProjectSessionGroup({
   opening,
   sessions,
   t,
-  onEnter,
+  onCreate,
   onOpenDetail,
   onOpenMap,
   onDelete,
@@ -820,14 +826,20 @@ function ProjectSessionGroup({
   opening: boolean;
   sessions: ReturnType<typeof deriveWorkbenchSessions>["root"];
   t: (key: WorkbenchKey) => string;
-  onEnter: () => void;
+  onCreate: () => void;
   onOpenDetail: () => void;
   onOpenMap: () => void;
   onDelete: () => void;
   openSession: (sessionId: SessionId) => void;
   archiveSession: (sessionId: SessionId) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expandedOverride, setExpandedOverride] = useState<boolean>();
+  const expanded = expandedOverride ?? selected;
+
+  useEffect(() => {
+    setExpandedOverride(undefined);
+  }, [selected]);
+
   return (
     <div className="projectSessionGroup">
       <ProjectRow
@@ -836,8 +848,8 @@ function ProjectSessionGroup({
         opening={opening}
         expanded={expanded}
         t={t}
-        onToggle={() => { setExpanded(!expanded); }}
-        onEnter={() => { setExpanded(true); onEnter(); }}
+        onToggle={() => { setExpandedOverride(!expanded); }}
+        onCreate={() => { setExpandedOverride(true); onCreate(); }}
         onOpenDetail={onOpenDetail}
         onOpenMap={onOpenMap}
         onDelete={onDelete}
@@ -856,7 +868,7 @@ function ProjectRow({
   expanded,
   t,
   onToggle,
-  onEnter,
+  onCreate,
   onOpenDetail,
   onOpenMap,
   onDelete,
@@ -867,32 +879,27 @@ function ProjectRow({
   expanded: boolean;
   t: (key: WorkbenchKey) => string;
   onToggle: () => void;
-  onEnter: () => void;
+  onCreate: () => void;
   onOpenDetail: () => void;
   onOpenMap: () => void;
   onDelete: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div className={selected ? "projectRow selected" : "projectRow"}>
       <button
         type="button"
-        className="projectExpand"
-        aria-expanded={expanded}
+        className="projectRowMain"
+        title={t(expanded ? "sessions.project.collapse" : "sessions.project.expand")}
         aria-label={`${t(expanded ? "sessions.project.collapse" : "sessions.project.expand")}: ${project.title}`}
+        aria-expanded={expanded}
         onClick={onToggle}
       >
-        <IconChevronDownOutline14 className={expanded ? "chevron open" : "chevron"} />
-      </button>
-      <button
-        type="button"
-        className="projectRowMain"
-        title={t("project.openChat")}
-        aria-label={`${t("project.openChat")}: ${project.title}`}
-        disabled={opening}
-        onClick={onEnter}
-      >
         <span className="rowIcon">
-          <IconFolderClose16 className="projectFallback" size={16} />
+          {expanded
+            ? <IconFolderOpen16 className="projectFallback" size={16} />
+            : <IconFolderClose16 className="projectFallback" size={16} />}
         </span>
         <span className="rowBody">
           <span className="rowTitle">
@@ -904,31 +911,51 @@ function ProjectRow({
           </span>
         </span>
       </button>
-      <Tooltip label={t("project.overview")} delayMs={400}>
+      <Tooltip label={t("sessions.project.newChat")} delayMs={400}>
         <button
           type="button"
-          className="rowAction"
-          aria-label={`${t("project.overview")}: ${project.title}`}
-          onClick={onOpenDetail}
+          className="rowAction projectNewSessionAction"
+          aria-label={`${t("sessions.project.newChat")}: ${project.title}`}
+          disabled={opening}
+          onClick={onCreate}
         >
-          <IconListPenOutline16 size={15} />
+          <IconPlusOutline16 size={15} />
         </button>
       </Tooltip>
-      <Tooltip label={t("project.map")} delayMs={400}>
-        <button
-          type="button"
-          className="rowAction"
-          aria-label={`${t("project.map")}: ${project.title}`}
-          onClick={onOpenMap}
-        >
-          <IconBranchOutline16 size={15} />
-        </button>
-      </Tooltip>
-      <Tooltip label={t("detail.delete")} delayMs={400}>
-        <button type="button" className="rowAction rowDeleteAction" aria-label={`${t("detail.delete")}: ${project.title}`} onClick={onDelete}>
-          <IconTrashOutline16 size={15} />
-        </button>
-      </Tooltip>
+      <Menu
+        className="projectMoreMenuRoot"
+        open={menuOpen}
+        portal
+        compact
+        align="end"
+        anchor={(
+          <Tooltip label={t("project.more")} delayMs={400} disabled={menuOpen}>
+            <button
+              type="button"
+              className="rowAction projectMoreAction"
+              aria-label={`${t("project.more")}: ${project.title}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => { setMenuOpen(!menuOpen); }}
+            >
+              <span className="projectMoreGlyph" aria-hidden="true">…</span>
+            </button>
+          </Tooltip>
+        )}
+        items={[
+          { id: "overview", label: t("project.overview"), icon: <IconListPenOutline16 size={15} /> },
+          { id: "map", label: t("project.map"), icon: <IconBranchOutline16 size={15} /> },
+          { type: "separator", id: "destructive" },
+          { id: "delete", label: t("detail.delete"), icon: <IconTrashOutline16 size={15} />, danger: true },
+        ]}
+        onClose={() => { setMenuOpen(false); }}
+        onSelect={(id) => {
+          setMenuOpen(false);
+          if (id === "overview") onOpenDetail();
+          else if (id === "map") onOpenMap();
+          else if (id === "delete") onDelete();
+        }}
+      />
     </div>
   );
 }

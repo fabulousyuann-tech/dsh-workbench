@@ -2,12 +2,12 @@
 
 ## Current release candidate
 
-- Current public release: `0.3.0`
+- Current public release: `0.3.1`
 - Compatibility baseline: DSH `0.1.1-rc.2`, Node.js `>=22.19.0`, pnpm `11.7.0`
 - Scope: one standalone Workbench plugin; no DSH source modifications and no bundled auxiliary plugins
 - Distribution: GitHub Release `.tgz` plus SHA-256; do not use the unrelated npm package with the same name
 - Release tarball SHA-256: use the `.tgz.sha256` asset generated beside each GitHub Release (the compressed archive digest is build-specific)
-- Built client SHA-256: `9f91de9d966530fba04a4b04e9d75f9f0b118af8ac11d631aa38103ce8defdea`
+- Built client SHA-256: `b44fc8e2aa89fe505a64d88a5bda19c22dce17159d239f634cebc9d1c75c44e9`
 
 ## Architecture boundaries
 
@@ -23,6 +23,17 @@
 3. State comes from DSH native `pendingInteraction`, `running` and `completed` projections; no second task state or transcript store is introduced.
 4. Motion uses distinct waiting/running/completed indicators and respects reduced-motion preferences.
 5. Release verification passes typecheck, 82 tests and all Host, Client and Typert bundles.
+
+## 0.3.1 public release changes
+
+1. Workbench project rows now keep only a New Project Chat button and a More menu, freeing title width in the dense sidebar.
+2. Customer and project rows no longer reserve a separate disclosure arrow. Clicking the directory row toggles its descendants, while clicking a concrete Session remains the only way to open history.
+3. Project overview, conversation map and project deletion moved into the official DSH Menu primitive with portal positioning, so the menu is not clipped by the animated Workbench tree or sidebar scroller.
+4. Customer rows use the same New Chat and More layout. New Chat starts a blank customer-directory Session; rename and safe deletion live in the official Menu.
+5. The current Session's customer and project ancestors auto-expand, open/closed folder icons expose state, and an explicit user toggle can still collapse either level.
+6. Actions are visually quiet until hover/focus, remain visible on touch devices and keep native semantic tokens in light and dark themes.
+7. Verification passes typecheck, 82 tests, all bundles and the production dependency audit. The local release tarball SHA-256 is `2605fe149b66cf15e32a37237ae571ea167b018b463c7228e1c211b01cde498f`; its isolated profile installs as 0.3.1, preserves official `ui-workspace`, disables only `ui-sidebar`, serves HTTP 200 and matches the built Host/Client checksums.
+8. Real 3080 QA confirmed zero customer/project disclosure-arrow elements, 24px New/More actions at 0.42 idle and 1.0 hover opacity, both official portaled menus, concrete Session navigation, ancestor auto-expansion and manual collapse/restore with no console exceptions. The normal profile package-manager update remains blocked by unrelated minimum-release-age entries; no policy was relaxed. The served profile already uses checksum-identical 0.3.1 Host/Client files for QA, while its dependency lock still reports 0.3.0 until a clean official update succeeds.
 
 ## 0.2.0 acceptance candidate changes
 

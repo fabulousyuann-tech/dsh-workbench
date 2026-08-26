@@ -43,6 +43,7 @@ export function WorkbenchSidebarRoot({
   width,
   startSession,
   openProjectSession,
+  startFolderSession,
   startProjectSession,
   moveSessionToProject,
   openSession,
@@ -194,7 +195,7 @@ export function WorkbenchSidebarRoot({
               <WorkbenchSidebarPanel
                 t={workbenchT}
                 query={query}
-                openProjectSession={openProjectSession}
+                startFolderSession={startFolderSession}
                 openSession={openSession}
                 archiveSession={archiveSession}
                 useSessions={useSessions}
