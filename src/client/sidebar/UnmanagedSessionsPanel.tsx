@@ -4,7 +4,7 @@ import type {
   SessionListState,
   WorkspaceId,
   WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 import type { SnapshotSelectorHook } from "@deepseek-ai/dsh-client-ui-slots";
 import {
   IconBrowseOutline16,

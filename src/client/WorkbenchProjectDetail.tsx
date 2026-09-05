@@ -510,6 +510,7 @@ export function WorkbenchProjectDetail({
             description={t("detail.deleteHint")}
             acknowledgeLabel={t("detail.deleteAcknowledge")}
             cancelLabel={t("detail.cancel")}
+            closeLabel={t("detail.cancel")}
             confirmLabel={t("detail.deleteConfirm")}
             acknowledged={deleteAcknowledged}
             disabled={lifecycleBusy}

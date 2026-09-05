@@ -8,17 +8,17 @@
 
 `dsh-workbench` owns a project-management overlay and the sidebar shell, while DSH owns Workspace registration, Session persistence, model credentials, Agent presets, permission presets, and the browser runtime. The multi-Space work needs explicit boundaries before its durable schema and creation flow are implemented.
 
-The rc.2 compatibility workspace uses the following effective matrix:
+The compatibility workspace uses the following effective matrix:
 
 | Surface | Observed version/source | Decision |
 | --- | --- | --- |
-| DSH CLI package | `@deepseek-ai/dsh 0.1.1-rc.2` | Pin the standalone launcher instead of following `latest` at startup. |
-| DSH runtime/API/client components | `0.1.1-rc.2` | Compile, test, and peer against one exact host matrix. |
-| Cordis | `4.0.1` | Keep exact peer/dev alignment. |
+| DSH CLI package | `@deepseek-ai/dsh 0.1.1-rc.2` and `0.1.2-rc.1` | Pin the intended launcher tag instead of following `latest` at startup. |
+| DSH runtime/API/client components | dev `0.1.2-rc.1`; peers through 0.1.1-rc.2/0.1.2-alpha.1/alpha.2/rc.1 | Compile against the newest verified split-controller matrix and retain capability-based fallbacks. |
+| Cordis | `4.0.1` / `4.0.2` | Match the Cordis generation supplied by the selected DSH host. |
 | React | `18.3.1` | Keep the existing React 18 peer range and do not bundle React. |
-| Official Workspace UI | `@deepseek-ai/dsh-client-ui-workspace 0.1.1-rc.2` | Resolve it from the standalone DSH installation; never link an external source checkout into a release profile. |
+| Official Workspace UI | `@deepseek-ai/dsh-client-ui-workspace` at the selected DSH generation | Resolve it from the standalone DSH installation; never link an external source checkout into a release profile. |
 
-“No RC mixing” for this plugin means one exact rc.2 dependency surface in development, packaging, and the target DSH profile.
+Within one running profile, every DSH package must still come from one host generation; the broad peer range is for separate verified hosts, not mixed package cohorts.
 
 ## Decision
 
@@ -28,8 +28,8 @@ The rc.2 compatibility workspace uses the following effective matrix:
 - Its stable `dsh-workbench` row owns the sidebar shell. The patch disables only the stock `ui-sidebar` row.
 - Official `ui-workspace` remains enabled and supplies `sidebar.workspaces` plus the new-session Workspace picker. Workbench reaches those surfaces through slots and runtime services, not source imports or patched private modules.
 - Browser output remains a lazy-CJS `window.__ModuleLoader__.load(...)` factory. React, Cordis, runtime, UI primitives, and UI slots remain external to the bundle.
-- DSH value/type dependencies are exact rc.2 peer + dev dependencies. Ordinary implementation libraries remain regular dependencies.
-- Host settings use `installSettingsSection`; browser writes use the namespace-matched `ctx.settingsScope` scope so writes carry revision fences. The v1 workspace root remains domain overlay data until M1 migrates it into Workbench Spaces; `dataDir` is the Host technical setting exposed by the M0 card.
+- DSH development dependencies are exact 0.1.2-rc.1 packages; peer ranges list the separately verified 0.1.1-rc.2 and 0.1.2 alpha.1/alpha.2/rc.1 hosts. Ordinary implementation libraries remain regular dependencies.
+- Host settings use 0.1.2's `SettingsProvider.installSection` with a 0.1.1-rc.2 register/watch fallback; browser writes use the namespace-matched `ctx.settingsScope` scope so writes carry revision fences.
 
 ### Workspace and Session APIs
 

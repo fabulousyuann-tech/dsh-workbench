@@ -4,8 +4,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { SessionId } from "@deepseek-ai/dsh-api-remotes/client";
-import type { ConnectionHandle } from "@deepseek-ai/dsh-client-connection/client";
 import {
   IconArchiveOutline20,
   IconBranchOutline16,
@@ -32,9 +30,11 @@ import {
   useProjectMapState,
 } from "./store.ts";
 import type {
+  CompatibleHistoryPage,
+  SessionId,
   SessionListState,
   WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 import "./ProjectConversationMap.css";
 
 const NODE_WIDTH = 248;
@@ -85,14 +85,14 @@ function shortTime(value: number): string {
 export function ProjectConversationMap({
   sessionsState,
   workspaceState,
-  connection,
+  loadHistory,
   openSession,
   forkSession,
   archiveSession,
 }: {
   sessionsState: SessionListState;
   workspaceState: WorkspaceListState;
-  connection: ConnectionHandle;
+  loadHistory: (sessionId: SessionId) => Promise<CompatibleHistoryPage>;
   openSession: (sessionId: SessionId) => void;
   forkSession: (sessionId: SessionId, atSeq: number) => Promise<SessionId>;
   archiveSession: (sessionId: SessionId) => Promise<void>;
@@ -150,7 +150,7 @@ export function ProjectConversationMap({
   const graphIds = useMemo(() => new Set(graphSessions.map((session) => session.id)), [graphSessions]);
 
   useEffect(() => {
-    if (sessionsState.phase !== "ready" || !workspaceState.baselinesReady) return;
+    if (sessionsState.phase !== "ready" || workspaceState.phase !== "ready") return;
     setLayout((current) => {
       const positions = Object.fromEntries(
         Object.entries(current.positions).filter(([sessionId]) => graphIds.has(sessionId as SessionId)),
@@ -159,7 +159,7 @@ export function ProjectConversationMap({
         ? current
         : { ...current, positions };
     });
-  }, [graphIds, sessionsState.phase, workspaceState.baselinesReady]);
+  }, [graphIds, sessionsState.phase, workspaceState.phase]);
 
   useEffect(() => {
     if (selectedSessionId !== undefined && !graphIds.has(selectedSessionId)) {
@@ -173,12 +173,11 @@ export function ProjectConversationMap({
     let alive = true;
     setHistoryLoading(true);
     setHistoryError(undefined);
-    void connection.api.sessions.history({ sessionId: selectedSessionId, maxMessages: 40 })
-      .then(({ result }) => {
+    void loadHistory(selectedSessionId)
+      .then((page) => {
         if (!alive) return;
-        if (!result.ok) throw new Error(result.error.message);
-        setTurns(projectTurns(result.value.events));
-        setHistoryHasMore(result.value.hasMore);
+        setTurns(projectTurns(page.entries));
+        setHistoryHasMore(page.hasMore);
       })
       .catch((cause: unknown) => {
         if (!alive) return;
@@ -187,7 +186,7 @@ export function ProjectConversationMap({
       })
       .finally(() => { if (alive) setHistoryLoading(false); });
     return () => { alive = false; };
-  }, [connection, selectedSessionId]);
+  }, [loadHistory, selectedSessionId]);
 
   if (target === undefined) return null;
 

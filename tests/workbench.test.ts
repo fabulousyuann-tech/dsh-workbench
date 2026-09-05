@@ -56,6 +56,7 @@ import {
   dragCarriesFiles,
   shouldBridgeFileDragTarget,
 } from "../src/client/fileDropBridge.ts";
+import { modalDialogIsOpen } from "../src/client/modalLayerBridge.ts";
 
 describe("配置契约", () => {
   it("接受绝对路径与 home 缩写，拒绝相对路径", () => {
@@ -68,6 +69,21 @@ describe("配置契约", () => {
 });
 
 describe("UI contract", () => {
+  it("顶层模态状态使用稳定 ARIA 契约而非构建生成类名", async () => {
+    const modal = {} as Element;
+    expect(modalDialogIsOpen({ querySelector: () => modal })).toBe(true);
+    expect(modalDialogIsOpen({ querySelector: () => null })).toBe(false);
+
+    const bridge = await readFile(new URL("../src/client/modalLayerBridge.ts", import.meta.url), "utf8");
+    const css = await readFile(new URL("../src/client/modalLayerBridge.css", import.meta.url), "utf8");
+    expect(bridge).toContain('[role="dialog"][aria-modal="true"]');
+    expect(bridge).toContain("MutationObserver");
+    expect(css).toContain("html[data-dsh-workbench-modal-open] [data-dsh-panel-host]");
+    expect(css).toContain("visibility: hidden !important");
+    expect(css).toContain("margin-right: 0 !important");
+    expect(css).toContain("margin-bottom: 0 !important");
+  });
+
   it("文件拖放兼容层仅桥接侧边栏非资源管理器区域", () => {
     const panel = {} as Element;
     const panelTarget = {
@@ -175,7 +191,7 @@ describe("UI contract", () => {
     const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
     const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
     const railCss = await readFile(new URL("../src/client/sidebar/SpaceContextRail.css", import.meta.url), "utf8");
-    expect(root).toContain("style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}");
+    expect(root).toContain("style={wide ? { width: effectiveWidth } : undefined}");
     expect(root).not.toContain("WORKBENCH_SIDEBAR_WIDTH");
     expect(root).not.toContain("useWorkbenchSidebarWidth");
     expect(rootCss).not.toContain("data-workbench-sidebar-shell");
@@ -204,13 +220,23 @@ describe("UI contract", () => {
       rootCss.indexOf("@media (prefers-reduced-motion: reduce)"),
     );
     expect(footerCss).toContain("position: relative");
-    expect(footerCss).toContain("z-index: 2");
+    expect(rootCss).toContain('.footArea {\n  position: relative;\n  flex: none;');
+    expect(rootCss).not.toContain('.footArea {\n  position: relative;\n  z-index:');
     expect(footerCss).toContain("overflow: visible");
     expect(footerCss).not.toContain("overflow-y: auto");
     expect(footerCss).not.toContain("overflow-x: hidden");
     expect(rootCss).not.toContain(".collapsed .regionArea {\n  display: none");
     expect(rootCss).not.toContain(".collapsed .footArea {\n  display:none");
     expect(rootCss).not.toContain(".collapsed .footerActions {\n  display: none");
+  });
+
+  it("设置浮层不受侧栏 stacking context 限制并保持窄栏样式", async () => {
+    const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
+    const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
+    expect(root).toContain('wide && effectiveWidth <= 330 && "narrow"');
+    expect(rootCss).toContain('[data-surface="sidebar"].narrow .filterMenuLabel');
+    expect(rootCss).not.toContain("container-type:");
+    expect(rootCss).not.toContain("@container");
   });
 
   it("公开设置右侧列表插槽，展开时同行、折叠时排列在设置上方", async () => {
@@ -222,6 +248,8 @@ describe("UI contract", () => {
     expect(slots).toContain('"sidebar.settings.trailing": { kind: "list"; scope: "root"');
     expect(slots).toContain('PropsRenderSlots<"sidebar.settings" | "sidebar.settings.trailing" | "sidebar.footer.action">');
     expect(client).toContain('"sidebar.settings.trailing": { kind: "list", scope: "root" }');
+    expect(client).toContain('"sidebar.settings": { kind: "single", scope: "root" }');
+    expect(client).toContain('"sidebar.footer.action": { kind: "list", scope: "root" }');
     expect(root).toContain('className="settingsRow"');
     expect(root).toContain('renderSlot("sidebar.settings.trailing", { wide })');
     expect(root.indexOf('renderSlot("sidebar.settings", { wide })'))
@@ -257,6 +285,7 @@ describe("UI contract", () => {
     const root = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.tsx", import.meta.url), "utf8");
     const activePanel = await readFile(new URL("../src/client/sidebar/ActiveSessionsPanel.tsx", import.meta.url), "utf8");
     const basicPanel = await readFile(new URL("../src/client/sidebar/UnmanagedSessionsPanel.tsx", import.meta.url), "utf8");
+    const sessionList = await readFile(new URL("../src/client/sidebar/SessionList.tsx", import.meta.url), "utf8");
     const slots = await readFile(new URL("../src/client/sidebar/slots.ts", import.meta.url), "utf8");
     const rootCss = await readFile(new URL("../src/client/sidebar/WorkbenchSidebarRoot.css", import.meta.url), "utf8");
     const client = await readFile(new URL("../src/client/index.tsx", import.meta.url), "utf8");
@@ -324,6 +353,10 @@ describe("UI contract", () => {
     expect(panel).toContain("deriveWorkbenchSessions(");
     expect(panel).toContain("sessionsByProjectId");
     expect(panel).toContain("archiveSession={archiveSession}");
+    expect(sessionList).not.toContain("window.confirm");
+    expect(sessionList).toContain("<Modal");
+    expect(sessionList).toContain("await archiveSession(archiveTarget.id)");
+    expect(sessionList).toContain('archiveBusy ? t("sessions.archiving")');
     expect(root).toContain('<WorkbenchBrand name={sidebarTitle} />');
     expect(root).toContain("<ActiveSessionsPanel");
     expect(root.indexOf("<ActiveSessionsPanel")).toBeLessThan(root.indexOf("<UnmanagedSessionsPanel"));
@@ -348,7 +381,7 @@ describe("UI contract", () => {
     expect(client).toContain('const DEFAULT_ORDINARY_WORKSPACE_TITLE = "normal workspace"');
     expect(client).toContain("void startDefaultOrdinarySession(false)");
     expect(client).toContain("await startDefaultOrdinarySession(true)");
-    expect(client).toContain("ctx.workspaces.startSession(workspace.workspaceId)");
+    expect(client).toContain("startWorkspaceSession(ctx, workspace.workspaceId)");
     expect(client).toContain("startProjectSession: async (workspaceId)");
     expect(client).toContain("startFolderSession: async (folderPath: string)");
     expect(slots).toContain("startFolderSession: (folderPath: string) => Promise<void>");
@@ -357,7 +390,7 @@ describe("UI contract", () => {
     expect(host).not.toContain("CASUAL_CHAT_DIRECTORY");
     expect(host).not.toContain(".dsh-casual-chats");
     expect(client).toContain("__dshWorkbenchFreshPage");
-    expect(client).toContain("ctx.workspaces.startSession(targetWorkspaceId)");
+    expect(client).toContain("startWorkspaceSession(ctx, targetWorkspaceId)");
     expect(client).toContain('window.setTimeout(() => { void load(); }, 250)');
   });
 });

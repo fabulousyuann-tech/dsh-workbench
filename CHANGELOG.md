@@ -4,6 +4,39 @@
 
 ## Unreleased
 
+- 将开发、类型验证与锁文件基线升级到 DSH `0.1.2-rc.1`，并将该版本加入全部 DSH peer 兼容范围。
+- 验证 RC.1 延续拆分后的 Session/Workspace Controller、`remote.session`、`uiWorkspace` 与 Host 设置注册契约，现有新旧宿主能力探测无需增加私有 API 依赖。
+- 会话图谱读取 RC.1 历史时会展开新增的压缩 Assistant chunk 记录，保留原始顺序、序号和时间戳，不会静默丢失流式内容。
+
+## 0.3.6 - 2026-08-31
+
+- 将开发与类型验证矩阵升级到 DSH `0.1.2-alpha.2`，新增拆分后的 Session/Workspace Controller、UI Session、Renderer 和 Workspace 适配依赖，同时保留 `0.1.1-rc.2` 与 `0.1.2-alpha.1` peer 兼容范围。
+- 会话模型列表、模型选择与图谱历史读取改用 alpha.2 的 `remote.session`；旧版继续回退到 `connection.api`，不再依赖已移除的 `dsh-client-runtime`。
+- Host 设置注册适配 alpha.2 的 `SettingsProvider.installSection`，并保留 rc.2 的 register/watch 回退；补齐 alpha.2 模态确认组件的无障碍关闭标签。
+- 修复 Better Sidebar / Office 与 DSH 顶层设置页的共存层级：打开原生模态弹窗时，外挂右侧面板和底部终端临时隐藏，应用恢复全宽，设置页完整覆盖聊天界面。
+- 模态关闭后保留并恢复原有面板、标签和终端状态；兼容判断使用稳定的 ARIA 模态契约，不依赖 DSH 构建生成的类名。
+
+## 0.3.5 - 2026-08-31
+
+- 兼容 DSH Desktop `2.0.4` 的扩展窗口与增强模式：官方 Sidebar 负责品牌、新建会话、设置和页脚，Workbench 嵌入其 `sidebar.workspaces` 内容区，不再注册第二个顶层 Sidebar。
+- 普通 Web 与 Desktop 兼容模式继续使用完整 Workbench Sidebar，并保留 `sidebar.settings`、`sidebar.footer.action` 和 `sidebar.settings.trailing` 插槽；两种模式均避免重复声明导致冷启动进入恢复模式。
+
+## 0.3.4 - 2026-08-30
+
+- 修复 DSH 设置页被会话任务栏和输入框覆盖的问题；Workbench 侧栏不再为设置插槽建立阻断全局浮层的 stacking context。
+- 窄侧栏样式改由实时宽度状态驱动，保留原有紧凑布局且不依赖会创建 stacking context 的 CSS container query。
+
+## 0.3.3 - 2026-08-30
+
+- 修复 DSH Desktop `2.0.4` 中普通“新建会话”、项目“＋”和客户目录会话入口无响应的问题；新版导航能力已从 `workspaces` 迁移到 `uiWorkspace`。
+- Space 会话创建改用新版 `sessions.create` controller，并保留旧版带 Agent preset 创建协议的回退路径。
+
+## 0.3.2 - 2026-08-30
+
+- 兼容 DSH Desktop `2.0.4` 内置的 DSH `0.1.2-alpha.1`：客户端不再强制注入已被拆分移除的 `@deepseek-ai/dsh-client-runtime`。
+- 会话与工作区继续通过稳定的 `sessions` / `workspaces` 服务契约访问；旧版 `0.1.1-rc.2` 与新版 controller 架构均可提供这些服务。
+- 扩展 DSH peer 版本范围，并验证新版仍保留 `ui-sidebar`、`ui-workspace` 和 Workbench 使用的会话/工作区 API。
+
 ## 0.3.1 - 2026-08-26
 
 - Workbench 项目行新增“新建项目会话”快捷按钮，点击后在对应 DSH Workspace 中创建或复用空白会话，不再打开最近一条历史会话。

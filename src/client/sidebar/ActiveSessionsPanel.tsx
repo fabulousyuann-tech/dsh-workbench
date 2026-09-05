@@ -1,7 +1,7 @@
 import type {
   SessionListState,
   WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 import type { SnapshotSelectorHook } from "@deepseek-ai/dsh-client-ui-slots";
 
 import type { WorkbenchKey } from "../locales.ts";

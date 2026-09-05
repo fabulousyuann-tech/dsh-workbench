@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
-import type { HistoryEntry, SessionId, WorkspaceId } from "@deepseek-ai/dsh-api-remotes/client";
-import type { SessionListState, WorkspaceView } from "@deepseek-ai/dsh-client-runtime/client";
+import type {
+  CompatibleHistoryEntry,
+  SessionId,
+  SessionListState,
+  WorkspaceId,
+  WorkspaceView,
+} from "../src/client/dshCompatibility.ts";
 
 import {
   decodeProjectMapLayout,
@@ -39,6 +44,8 @@ describe("project conversation map", () => {
       title: "project",
       path: "/new/root/customer/project",
       sessionIds: [sid("root"), sid("archived")],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
     } as WorkspaceView;
     const sessions = deriveProjectGraphSessions(
       sessionState(),
@@ -113,7 +120,7 @@ describe("project conversation map", () => {
       {
         event: { type: "turn/end", seq: 4, time: 5, data: { turn: 0, reason: { kind: "completed" } } },
       },
-    ] as unknown as HistoryEntry[];
+    ] as unknown as CompatibleHistoryEntry[];
 
     expect(projectTurns(events)).toEqual([{
       turn: 0,

@@ -3,7 +3,6 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  container-type: inline-size;
   height: 100%;
   width: 100% !important;
   min-width: 0;
@@ -14,6 +13,17 @@
   font-size: 14px;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"].embedded {
+  width: 100% !important;
+  min-width: 0;
+  padding: 0 0 6px;
+  background: transparent;
+}
+
+[data-plugin="dsh-workbench"][data-surface="sidebar"].embedded .sidebarSearch {
+  margin-right: var(--dsh-sidebar-inline-padding);
 }
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"].collapsed {
@@ -329,7 +339,6 @@
 
 [data-plugin="dsh-workbench"][data-surface="sidebar"] .footArea {
   position: relative;
-  z-index: 2;
   flex: none;
   min-height: 0;
   display: flex;
@@ -492,15 +501,13 @@
   padding-top: 43px;
 }
 
-@container (max-width: 330px) {
-  [data-plugin="dsh-workbench"][data-surface="sidebar"] .filterMenuLabel {
-    display: none;
-  }
+[data-plugin="dsh-workbench"][data-surface="sidebar"].narrow .filterMenuLabel {
+  display: none;
+}
 
-  [data-plugin="dsh-workbench"][data-surface="sidebar"] .filterMenuButton {
-    width: 32px;
-    padding: 0;
-  }
+[data-plugin="dsh-workbench"][data-surface="sidebar"].narrow .filterMenuButton {
+  width: 32px;
+  padding: 0;
 }
 
 /* 0.9 unified library: one compact DSH column, one scroll owner. */

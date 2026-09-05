@@ -1,11 +1,9 @@
 import type {
-  HistoryEntry,
+  CompatibleHistoryEntry,
   SessionId,
-} from "@deepseek-ai/dsh-api-remotes/client";
-import type {
   SessionListState,
   WorkspaceView,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 
 import { isPathInside, rebaseDirectoryFromAliases } from "../sidebar/sessionOwnership.ts";
 
@@ -171,7 +169,7 @@ function textFromContent(content: unknown): string {
   }).filter(Boolean).join("\n").trim();
 }
 
-function eventTurn(event: HistoryEntry["event"]): number | undefined {
+function eventTurn(event: CompatibleHistoryEntry["event"]): number | undefined {
   if (typeof event.data !== "object" || event.data === null) return undefined;
   const value = (event.data as Record<string, unknown>).turn;
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
@@ -183,7 +181,7 @@ function ellipsis(value: string, max = 220): string {
 }
 
 /** Build a compact human transcript without retaining tool arguments/results. */
-export function projectTurns(entries: readonly HistoryEntry[]): ProjectTurn[] {
+export function projectTurns(entries: readonly CompatibleHistoryEntry[]): ProjectTurn[] {
   const turns = new Map<number, ProjectTurn>();
   let activeTurn: number | undefined;
   const ensure = (turn: number): ProjectTurn => {

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import type { WorkspaceId } from "@deepseek-ai/dsh-client-runtime/client";
+import type { WorkspaceId } from "../dshCompatibility.ts";
 import {
+  Button,
   IconBrowseOutline16,
   IconNewChatOutline16,
   IconTrashOutline16,
+  Modal,
   Tooltip,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 
@@ -31,6 +33,9 @@ export function SessionList({
   compact?: boolean;
 }) {
   const [movingSessionId, setMovingSessionId] = useState<SidebarSession["id"]>();
+  const [archiveTarget, setArchiveTarget] = useState<SidebarSession>();
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState<string>();
 
   const move = async (session: SidebarSession, workspaceId: WorkspaceId): Promise<void> => {
     if (moveSession === undefined || movingSessionId !== undefined) return;
@@ -41,6 +46,26 @@ export function SessionList({
       onMoveError?.(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setMovingSessionId(undefined);
+    }
+  };
+
+  const closeArchiveConfirmation = (): void => {
+    if (archiveBusy) return;
+    setArchiveTarget(undefined);
+    setArchiveError(undefined);
+  };
+
+  const confirmArchive = async (): Promise<void> => {
+    if (archiveTarget === undefined || archiveBusy) return;
+    setArchiveBusy(true);
+    setArchiveError(undefined);
+    try {
+      await archiveSession(archiveTarget.id);
+      setArchiveTarget(undefined);
+    } catch (cause) {
+      setArchiveError(cause instanceof Error ? cause.message : t("sessions.archiveFailed"));
+    } finally {
+      setArchiveBusy(false);
     }
   };
 
@@ -94,8 +119,8 @@ export function SessionList({
               className="managedSessionArchive"
               aria-label={`${t("sessions.archive")}: ${session.title}`}
               onClick={() => {
-                if (!window.confirm(t("sessions.archiveConfirm").replace("{title}", session.title))) return;
-                void archiveSession(session.id);
+                setArchiveError(undefined);
+                setArchiveTarget(session);
               }}
             >
               <IconTrashOutline16 size={14} />
@@ -103,6 +128,27 @@ export function SessionList({
           </Tooltip>
         </div>
       ))}
+      <Modal
+        open={archiveTarget !== undefined}
+        onClose={closeArchiveConfirmation}
+        title={t("sessions.archive")}
+        description={archiveTarget === undefined
+          ? ""
+          : t("sessions.archiveConfirm").replace("{title}", archiveTarget.title)}
+        closeLabel={t("sessions.archiveCancel")}
+        footer={(
+          <>
+            <Button variant="outline" disabled={archiveBusy} onClick={closeArchiveConfirmation}>
+              {t("sessions.archiveCancel")}
+            </Button>
+            <Button variant="primary" disabled={archiveBusy} onClick={() => { void confirmArchive(); }}>
+              {archiveBusy ? t("sessions.archiving") : t("sessions.archive")}
+            </Button>
+          </>
+        )}
+      >
+        {archiveError !== undefined && <div role="alert">{archiveError}</div>}
+      </Modal>
     </div>
   );
 }

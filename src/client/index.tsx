@@ -1,16 +1,14 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import type {
-  ClientContext,
-  ISessions,
-  SessionId,
-  WorkspaceId,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type {} from "@deepseek-ai/dsh-client-ui-session/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {} from "@deepseek-ai/dsh-client-ui-workspace/client";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-connection/client";
-import type { ConnectionHandle } from "@deepseek-ai/dsh-client-connection/client";
+import type {} from "@deepseek-ai/dsh-api-session-controller/client";
+import type {} from "@deepseek-ai/dsh-api-workspace-controller/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 
 import { TYPERT_REMOTE } from "../remote.ts";
@@ -52,13 +50,30 @@ import { remountPluginCss, releasePluginCss } from "./pluginCss.ts";
 import { bumpLibrary, useLibraryEpoch } from "./selection.ts";
 import { registerProjectTriggers } from "./projectTriggers.ts";
 import { registerWorkbenchSettingsCard, type CompatibleSettingsSlots } from "./settingsSlot.ts";
-import { WorkbenchSidebarRoot } from "./sidebar/WorkbenchSidebarRoot.tsx";
-import type { WorkbenchSidebarInjected, WorkbenchSidebarSlotProps } from "./sidebar/slots.ts";
+import { WorkbenchSidebarRegion, WorkbenchSidebarRoot } from "./sidebar/WorkbenchSidebarRoot.tsx";
+import type {
+  WorkbenchSidebarInjected,
+  WorkbenchSidebarSlotProps,
+  WorkbenchWorkspaceSlotProps,
+} from "./sidebar/slots.ts";
 import { inferLegacyRootAliases } from "./sidebar/sessionOwnership.ts";
 import { WorkbenchSettingsCard } from "./WorkbenchSettingsCard.tsx";
 import { createSpaceSession } from "./sessionCreation.ts";
 import { installFileDropCompatibilityBridge } from "./fileDropBridge.ts";
+import { installModalLayerCompatibilityBridge } from "./modalLayerBridge.ts";
 import { ProjectConversationMap } from "./projectMap/ProjectConversationMap.tsx";
+import {
+  desktopUsesOfficialSidebar,
+  loadSessionHistory,
+  modelGroups,
+  openWorkspacePath,
+  pickWorkspaceDirectory,
+  startWorkspaceSession,
+  type ClientContext,
+  type ISessions,
+  type SessionId,
+  type WorkspaceId,
+} from "./dshCompatibility.ts";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface LocaleNamespaceMap {
@@ -146,6 +161,10 @@ export function apply(ctx: ClientContext): void {
     () => installFileDropCompatibilityBridge(),
     "dsh-workbench: file-drop compatibility",
   );
+  ctx.effect(
+    () => installModalLayerCompatibilityBridge(),
+    "dsh-workbench: modal-layer compatibility",
+  );
   const remoteOf = (): WorkbenchRemote | undefined =>
     ctx.get("remote.workbench") as WorkbenchRemote | undefined;
 
@@ -197,7 +216,7 @@ export function apply(ctx: ClientContext): void {
     if (recent !== undefined) return recent;
     if (!allowPick) return undefined;
 
-    const path = await ctx.workspaces.pickDirectory();
+    const path = await pickWorkspaceDirectory(ctx);
     if (path === null) return undefined;
     return ctx.workspaces.list.getSnapshot().items.find((item) => item.path === path)
       ?? await ctx.workspaces.create({ path });
@@ -206,7 +225,7 @@ export function apply(ctx: ClientContext): void {
   async function startDefaultOrdinarySession(allowPick: boolean): Promise<boolean> {
     const workspace = await defaultOrdinaryWorkspace(allowPick);
     if (workspace === undefined) return false;
-    ctx.workspaces.startSession(workspace.workspaceId);
+    startWorkspaceSession(ctx, workspace.workspaceId);
     return true;
   }
 
@@ -302,8 +321,8 @@ export function apply(ctx: ClientContext): void {
       if (remote === undefined) throw new Error("remote unavailable");
       return unwrap(await remote.listWorkspaces({}), "workspaces failed");
     },
-    pickDirectory: () => ctx.workspaces.pickDirectory(),
-    openPath: (path) => ctx.workspaces.openPath(path),
+    pickDirectory: () => pickWorkspaceDirectory(ctx),
+    openPath: (path) => openWorkspacePath(ctx, path),
     setWorkspaceRoot: async (path) => {
       const remote = remoteOf();
       if (remote === undefined) throw new Error("remote unavailable");
@@ -410,13 +429,11 @@ export function apply(ctx: ClientContext): void {
       return unwrap(await remote.getAuxiliaryCapabilities({}), "auxiliary capability lookup failed");
     },
     listModels: async (): Promise<DshModelGroup[]> => {
-      const connection = (ctx as ClientContext & { connection: ConnectionHandle }).connection;
-      const { result } = await connection.api.llm.models({});
-      if (!result.ok) throw new Error(result.error.message);
-      return result.value.groups.map((group) => ({
+      const groups = await modelGroups(ctx);
+      return groups.map((group) => ({
         id: group.id,
-        name: group.name,
-        models: group.models.map((model) => ({ id: model.id, name: model.name })),
+        name: group.name ?? group.id,
+        models: group.models.map((model) => ({ id: model.id, name: model.name ?? model.id })),
       }));
     },
   });
@@ -435,7 +452,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   const startRegisteredWorkspaceSession = (targetWorkspaceId: WorkspaceId): void => {
-    ctx.workspaces.startSession(targetWorkspaceId);
+    startWorkspaceSession(ctx, targetWorkspaceId);
   };
 
   const injectSidebar = (): WorkbenchSidebarInjected => ({
@@ -456,13 +473,13 @@ export function apply(ctx: ClientContext): void {
       }
       // 有历史会话时打开最近一条（非空白、非归档、非子代理），否则回退到新建/复用空白会话
       if (reopenMostRecent(ctx, workspace.workspaceId)) return;
-      ctx.workspaces.startSession(workspace.workspaceId);
+      startWorkspaceSession(ctx, workspace.workspaceId);
     },
     startFolderSession: async (folderPath: string) => {
       const state = ctx.workspaces.list.getSnapshot();
       const workspace = state.items.find((item) => item.path === folderPath)
         ?? await ctx.workspaces.create({ path: folderPath });
-      ctx.workspaces.startSession(workspace.workspaceId);
+      startWorkspaceSession(ctx, workspace.workspaceId);
     },
     startProjectSession: async (workspaceId) => {
       startRegisteredWorkspaceSession(workspaceId);
@@ -596,8 +613,43 @@ export function apply(ctx: ClientContext): void {
     );
   }
 
+  function BoundWorkspaceRegion(props: WorkbenchWorkspaceSlotProps) {
+    const workbenchT = ctx.locale.bind(NS);
+    const workbenchRoots = useWorkbenchRoots(workbenchFace);
+    const sessionState = props.useSessions((state) => state);
+    const aliasesBySpace = inferLegacyRootAliases(
+      workbenchRoots.spaces,
+      Object.values(sessionState.byId).map((session) => session.cwd),
+    );
+    const managedRootPaths = workbenchRoots.spaces.flatMap((space) => [
+      space.rootPath,
+      ...(aliasesBySpace[space.id] ?? []),
+    ]);
+    const selectedRootAliases = workbenchRoots.selectedSpaceId === undefined
+      ? []
+      : aliasesBySpace[workbenchRoots.selectedSpaceId] ?? [];
+    return (
+      <WorkbenchSidebarRegion
+        {...props}
+        workbenchFace={workbenchFace}
+        workbenchT={workbenchT}
+        managedRootPaths={managedRootPaths}
+        spaces={workbenchRoots.spaces}
+        aliasesBySpace={aliasesBySpace}
+        selectedSpaceId={workbenchRoots.selectedSpaceId}
+        selectedRootPath={workbenchRoots.selectedRootPath}
+        selectedRootAliases={selectedRootAliases}
+        selectedSpaceName={workbenchRoots.selectedSpaceName}
+      />
+    );
+  }
+
   function BoundProjectConversationMap() {
     const sessions = ctx.sessions as unknown as ISessions;
+    const historyLoader = useCallback(
+      (sessionId: SessionId) => loadSessionHistory(ctx, sessionId),
+      [],
+    );
     const sessionsState = useSyncExternalStore(
       (listener) => sessions.list.subscribe(listener),
       () => sessions.list.getSnapshot(),
@@ -610,7 +662,7 @@ export function apply(ctx: ClientContext): void {
       <ProjectConversationMap
         sessionsState={sessionsState}
         workspaceState={workspaceState}
-        connection={(ctx as ClientContext & { connection: ConnectionHandle }).connection}
+        loadHistory={historyLoader}
         openSession={(sessionId) => { sessions.open(sessionId); }}
         forkSession={(sessionId, atSeq) => sessions.fork({ sessionId, atSeq, increaseTitle: true })}
         archiveSession={(sessionId) => ctx.workspaces.archiveSession(sessionId)}
@@ -618,19 +670,30 @@ export function apply(ctx: ClientContext): void {
     );
   }
 
-  ctx.slots.inject("sidebar", () =>
-    ctx.slots.register({
-      name: "sidebar",
-      locale: NS,
-      priority: -2,
-      children: {
-        "sidebar.settings": { kind: "single", scope: "root" },
-        "sidebar.settings.trailing": { kind: "list", scope: "root" },
-        "sidebar.footer.action": { kind: "list", scope: "root" },
-      },
-      inject: injectSidebar,
-    }, BoundSidebar),
-  );
+  if (desktopUsesOfficialSidebar()) {
+    ctx.slots.inject("sidebar.workspaces", () =>
+      ctx.slots.register({
+        name: "sidebar.workspaces",
+        locale: NS,
+        priority: -2,
+        inject: injectSidebar,
+      }, BoundWorkspaceRegion),
+    );
+  } else {
+    ctx.slots.inject("sidebar", () =>
+      ctx.slots.register({
+        name: "sidebar",
+        locale: NS,
+        priority: -2,
+        children: {
+          "sidebar.settings": { kind: "single", scope: "root" },
+          "sidebar.settings.trailing": { kind: "list", scope: "root" },
+          "sidebar.footer.action": { kind: "list", scope: "root" },
+        },
+        inject: injectSidebar,
+      }, BoundSidebar),
+    );
+  }
 
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register({

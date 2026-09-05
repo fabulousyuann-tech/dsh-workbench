@@ -1,0 +1,23 @@
+/*
+ * A third-party panel host (notably dsh-better-sidebar) may live outside
+ * #root while still shrinking #root with --dsh-sidebar-width/height. During a
+ * true modal, keep that host mounted but make it inert and let the application
+ * root reclaim the complete viewport. Closing the modal restores the exact
+ * previous panel and tab state because no component is unmounted.
+ */
+html[data-dsh-workbench-modal-open] [data-dsh-panel-host] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-dsh-workbench-modal-open] #root {
+  margin-right: 0 !important;
+  width: 100% !important;
+  transition: none !important;
+}
+
+html[data-dsh-workbench-modal-open] #root [data-dsh-frame] > [data-pane="conversation"],
+html[data-dsh-workbench-modal-open] #root :has(> [data-slot="conversation"]) {
+  margin-bottom: 0 !important;
+  transition: none !important;
+}

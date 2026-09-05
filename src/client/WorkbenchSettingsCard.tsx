@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { Button, IconChevronDownOutline14, Input } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { InjectFace, PropsLocale, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";

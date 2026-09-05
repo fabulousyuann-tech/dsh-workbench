@@ -2,7 +2,7 @@
 
 面向 DeepSeek Harness（DSH）的本地多工作台插件。它以“工作台 → 客户 → 项目 → 会话”组织目录，同时保留独立的普通会话与普通项目；同一条会话只显示在一个归属层级。
 
-当前公开版本：`0.3.1`。已验证 DSH `0.1.1-rc.2`、Node.js `>=22.19.0`、pnpm `11.7.0`。
+当前公开版本：`0.3.6`。已验证 DSH `0.1.1-rc.2`、`0.1.2-alpha.1`、`0.1.2-alpha.2` 与 `0.1.2-rc.1`、Node.js `>=22.19.0`、pnpm `11.7.0`。
 
 ## 主要能力
 
@@ -21,7 +21,7 @@
 
 ## 重要兼容说明
 
-Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏；官方 `ui-workspace`、会话、模型、日志和主对话区仍由 DSH 管理。它不会修改 DSH 官方源码，也不会复制或合并其他插件。
+Workbench 在普通 Web/兼容模式中禁用官方 `ui-sidebar` 行并提供完整替代侧边栏；当 DSH Desktop 的扩展窗口或增强模式强制启用官方 Sidebar 时，Workbench 只替换官方 `sidebar.workspaces` 内容区，品牌、新建会话、设置和页脚仍由官方外壳负责。官方 `ui-workspace`、会话、模型、日志和主对话区仍由 DSH 管理。它不会修改 DSH 官方源码，也不会复制或合并其他插件。
 
 同一 profile 中不要同时启用另一个会接管 `ui-sidebar` 的插件。DSH 升级后应先在测试 profile 验证；目前只承诺上面列出的已验证版本，不承诺未知未来版本自动兼容。
 
@@ -29,11 +29,11 @@ Workbench 会禁用官方 `ui-sidebar` 行，并提供完整的替代侧边栏�
 
 > npm 上的同名 `dsh-workbench` 属于其他项目。不要执行 `dsh plugin ... add dsh-workbench`，以免安装错误的软件包。
 
-从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.3.1.tgz` 和对应 `.sha256`，校验后安装本地文件：
+从 GitHub Releases 下载本仓库发布的 `dsh-workbench-0.3.6.tgz` 和对应 `.sha256`，校验后安装本地文件：
 
 ```bash
-shasum -a 256 -c dsh-workbench-0.3.1.tgz.sha256
-dsh plugin --profile web add /absolute/path/dsh-workbench-0.3.1.tgz
+shasum -a 256 -c dsh-workbench-0.3.6.tgz.sha256
+dsh plugin --profile web add /absolute/path/dsh-workbench-0.3.6.tgz
 dsh --profile web --dump-config
 dsh --profile web
 ```

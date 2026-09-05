@@ -4,6 +4,7 @@ lib
 .pnpm-store
 artifacts
 plugins
+.local-plugins
 design-qa.md
 docs/DSH-CLEAN-REINSTALL.md
 docs/WORKSPACE-WORKBENCH-DEVELOPMENT-CHECKLIST.md

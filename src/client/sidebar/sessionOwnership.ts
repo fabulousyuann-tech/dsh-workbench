@@ -4,7 +4,7 @@ import type {
   SessionListState,
   WorkspaceId,
   WorkspaceView,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 
 export interface SidebarSession {
   id: SessionId;

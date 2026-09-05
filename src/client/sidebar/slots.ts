@@ -1,4 +1,4 @@
-import type { SessionId, WorkspaceId } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionId, WorkspaceId } from "../dshCompatibility.ts";
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type { SessionPolicyOverride } from "../../policy.ts";
@@ -65,5 +65,10 @@ export interface WorkbenchSidebarInjected {
 export type WorkbenchSidebarSlotProps =
   & PropsRuntime<"sidebar">
   & PropsRenderSlots<"sidebar.settings" | "sidebar.settings.trailing" | "sidebar.footer.action">
+  & WorkbenchSidebarInjected
+  & PropsLocale<"dsh.workbench">;
+
+export type WorkbenchWorkspaceSlotProps =
+  & PropsRuntime<"sidebar.workspaces">
   & WorkbenchSidebarInjected
   & PropsLocale<"dsh.workbench">;

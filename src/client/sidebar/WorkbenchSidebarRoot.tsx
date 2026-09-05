@@ -15,7 +15,7 @@ import { WorkbenchSidebarPanel } from "./WorkbenchSidebarPanel.tsx";
 import { SpaceContextRail } from "./SpaceContextRail.tsx";
 import { UnmanagedSessionsPanel } from "./UnmanagedSessionsPanel.tsx";
 import { setProjectMapSidebarGeometry } from "../projectMap/store.ts";
-import type { WorkbenchSidebarSlotProps } from "./slots.ts";
+import type { WorkbenchSidebarSlotProps, WorkbenchWorkspaceSlotProps } from "./slots.ts";
 import "./WorkbenchSidebarRoot.css";
 
 const COLLAPSE_SETTLE_MS = 150;
@@ -37,6 +37,98 @@ export type WorkbenchSidebarRootProps = WorkbenchSidebarSlotProps & {
   selectedSpaceName: string | undefined;
   sidebarTitle: string;
 };
+
+export type WorkbenchSidebarRegionProps = WorkbenchWorkspaceSlotProps & {
+  workbenchFace: WorkbenchViewFace;
+  workbenchT: (key: WorkbenchKey) => string;
+  managedRootPaths: readonly string[];
+  spaces: readonly WorkbenchSpace[];
+  aliasesBySpace: Readonly<Record<string, readonly string[]>>;
+  selectedSpaceId: string | undefined;
+  selectedRootPath: string | undefined;
+  selectedRootAliases: readonly string[];
+  selectedSpaceName: string | undefined;
+};
+
+/** Workbench's browsing body when DSH Desktop owns the surrounding Sidebar. */
+export function WorkbenchSidebarRegion({
+  wide,
+  openProjectSession,
+  startFolderSession,
+  startProjectSession,
+  moveSessionToProject,
+  openSession,
+  archiveSession,
+  removeBasicProject,
+  workbenchFace,
+  workbenchT,
+  managedRootPaths,
+  spaces,
+  aliasesBySpace,
+  selectedSpaceId,
+  selectedRootPath,
+  selectedRootAliases,
+  selectedSpaceName,
+  useSessions,
+  useWorkspaces,
+}: WorkbenchSidebarRegionProps) {
+  const [query, setQuery] = useState("");
+  if (!wide) return null;
+
+  return (
+    <div data-plugin="dsh-workbench" data-surface="sidebar" className="embedded">
+      <div className="sidebarSearch">
+        <IconSearchOutline16 size={15} />
+        <input value={query} placeholder={workbenchT("sidebar.search")} aria-label={workbenchT("sidebar.search")} onChange={(event) => { setQuery(event.target.value); }} />
+        {query !== "" && <button type="button" aria-label={workbenchT("toolbar.search.clear")} onClick={() => { setQuery(""); }}>×</button>}
+      </div>
+      <div className="regionArea">
+        <div className="sidebarLibraryScroll">
+          <ActiveSessionsPanel
+            t={workbenchT}
+            query={query}
+            spaces={spaces}
+            aliasesBySpace={aliasesBySpace}
+            useSessions={useSessions}
+            useWorkspaces={useWorkspaces}
+            openSession={openSession}
+          />
+          <UnmanagedSessionsPanel
+            t={workbenchT}
+            query={query}
+            useSessions={useSessions}
+            useWorkspaces={useWorkspaces}
+            managedRootPaths={managedRootPaths}
+            openSession={openSession}
+            archiveSession={archiveSession}
+            openProjectSession={openProjectSession}
+            startProjectSession={startProjectSession}
+            moveSessionToProject={moveSessionToProject}
+            pickDirectory={workbenchFace.pickDirectory}
+            removeBasicProject={removeBasicProject}
+          />
+          <SpaceContextRail face={workbenchFace} t={workbenchT}>
+            <WorkbenchSidebarPanel
+              t={workbenchT}
+              query={query}
+              startFolderSession={startFolderSession}
+              openSession={openSession}
+              archiveSession={archiveSession}
+              useSessions={useSessions}
+              useWorkspaces={useWorkspaces}
+              selectedSpaceName={selectedSpaceName}
+              selectedSpaceId={selectedSpaceId}
+              selectedRootPath={selectedRootPath}
+              selectedRootAliases={selectedRootAliases}
+              onProjectSessionOpen={() => {}}
+              {...workbenchFace}
+            />
+          </SpaceContextRail>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function WorkbenchSidebarRoot({
   collapsed,
@@ -81,6 +173,7 @@ export function WorkbenchSidebarRoot({
   if (!collapsed) lastWideWidth.current = width;
   const everWide = useRef(!collapsed);
   if (!collapsed) everWide.current = true;
+  const effectiveWidth = collapsed ? lastWideWidth.current : width;
 
   useEffect(() => {
     setProjectMapSidebarGeometry(collapsed ? 56 : width, collapsed);
@@ -127,9 +220,10 @@ export function WorkbenchSidebarRoot({
         !wide && "collapsed",
         !wide && everWide.current && "railIn",
         collapsed && wide && "fading",
+        wide && effectiveWidth <= 330 && "narrow",
         !pointerInside && "quietBars",
       )}
-      style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}
+      style={wide ? { width: effectiveWidth } : undefined}
       onPointerEnter={() => { cancelLinger(); setPointerInside(true); }}
       onPointerLeave={() => { armLinger(); }}
     >

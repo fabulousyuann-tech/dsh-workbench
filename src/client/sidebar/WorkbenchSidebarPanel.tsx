@@ -3,7 +3,7 @@ import type {
   SessionId,
   SessionListState,
   WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "../dshCompatibility.ts";
 import type { SnapshotSelectorHook } from "@deepseek-ai/dsh-client-ui-slots";
 import {
   Button,
@@ -607,6 +607,7 @@ export function WorkbenchSidebarPanel({
         ].filter(Boolean).join(" ")}
         acknowledgeLabel={t("detail.deleteAcknowledge")}
         cancelLabel={t("detail.cancel")}
+        closeLabel={t("detail.cancel")}
         confirmLabel={t("customer.deleteConfirm")}
         acknowledged={deleteAcknowledged}
         disabled={deleteBusy}
@@ -621,6 +622,7 @@ export function WorkbenchSidebarPanel({
         description={[t("detail.deletePrompt"), t("detail.deleteHint"), projectDeleteError].filter(Boolean).join(" ")}
         acknowledgeLabel={t("detail.deleteAcknowledge")}
         cancelLabel={t("detail.cancel")}
+        closeLabel={t("detail.cancel")}
         confirmLabel={t("detail.deleteConfirm")}
         acknowledged={projectDeleteAcknowledged}
         disabled={projectDeleteBusy}

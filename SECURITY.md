@@ -2,7 +2,7 @@
 
 ## Supported version
 
-安全修复只维护当前最新 release。当前兼容基线为 DSH `0.1.1-rc.2`。
+安全修复只维护当前最新 release。当前兼容基线为 DSH `0.1.1-rc.2`、`0.1.2-alpha.1`、`0.1.2-alpha.2` 与 `0.1.2-rc.1`。
 
 ## Reporting
 
